@@ -4,7 +4,7 @@
   "description": "HAMH - Hermes Agent Management Hub. You got them Hermes Agents, we got a Boss for them.",
   "main": "manager-agent-server.js",
   "scripts": {
-    "start": "node manager-agent-server.js",
+    "start": "node src/manager-agent-server.js",
     "dev": "nodemon manager-agent-server.js",
     "test": "jest --coverage",
     "lint": "eslint . --max-warnings 0",
