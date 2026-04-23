@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HAMH Deployment Guide - Hostinger VPS</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        @page {
+            size: A4;
+            margin: 2cm;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: white;
+        }
+        
+        .container {
+            max-width: 210mm;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #1a3a3a 0%, #2d5a52 100%);
+            color: white;
+            padding: 40px;
+            border-radius: 8px;
+            margin-bottom: 40px;
+            page-break-after: avoid;
+        }
+        
+        .header h1 {
+            font-size: 36px;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+        
+        .tagline {
+            text-align: center;
+            font-size: 18px;
+            opacity: 0.9;
+            margin-bottom: 20px;
+            font-style: italic;
+        }
+        
+        .company {
+            text-align: center;
+            font-size: 14px;
+            opacity: 0.8;
+        }
+        
+        .toc {
+            background: #f5f5f5;
+            padding: 20px;
+            margin: 30px 0;
+            border-radius: 8px;
+            page-break-inside: avoid;
+        }
+        
+        .toc h2 {
+            margin-bottom: 15px;
+            color: #1a3a3a;
+            font-size: 18px;
+        }
+        
+        .toc ul {
+            list-style: none;
+            padding-left: 20px;
+        }
+        
+        .toc li {
+            margin: 8px 0;
+            padding-left: 20px;
+            position: relative;
+        }
+        
+        .toc li:before {
+            content: "→";
+            position: absolute;
+            left: 0;
+            color: #52b788;
+        }
+        
+        .toc a {
+            color: #2d5a52;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        
+        h2 {
+            color: #1a3a3a;
+            font-size: 24px;
+            margin-top: 40px;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 3px solid #52b788;
+            page-break-after: avoid;
+        }
+        
+        h3 {
+            color: #2d5a52;
+            font-size: 16px;
+            margin-top: 25px;
+            margin-bottom: 12px;
+            page-break-after: avoid;
+        }
+        
+        p {
+            margin-bottom: 15px;
+            text-align: justify;
+        }
+        
+        code {
+            background: #f0f0f0;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            color: #d63384;
+        }
+        
+        pre {
+            background: #1a1a1a;
+            color: #00ff00;
+            padding: 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 15px 0;
+            font-size: 12px;
+            line-height: 1.4;
+            page-break-inside: avoid;
+            border-left: 4px solid #52b788;
+        }
+        
+        pre code {
+            background: none;
+            color: #00ff00;
+            padding: 0;
+        }
+        
+        .step {
+            background: #f9f9f9;
+            padding: 15px;
+            margin: 20px 0;
+            border-left: 4px solid #52b788;
+            border-radius: 4px;
+            page-break-inside: avoid;
+        }
+        
+        .checklist {
+            margin: 20px 0;
+            padding: 0;
+            list-style: none;
+        }
+        
+        .checklist li {
+            padding: 8px;
+            margin: 5px 0;
+            border-radius: 4px;
+            background: #f5f5f5;
+            padding-left: 30px;
+            position: relative;
+        }
+        
+        .checklist li:before {
+            content: "☐";
+            position: absolute;
+            left: 10px;
+            color: #52b788;
+            font-size: 16px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            page-break-inside: avoid;
+        }
+        
+        table th {
+            background: #2d5a52;
+            color: white;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+        }
+        
+        table td {
+            padding: 12px;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        table tr:nth-child(even) {
+            background: #f9f9f9;
+        }
+        
+        .warning {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+            page-break-inside: avoid;
+        }
+        
+        .success {
+            background: #d4edda;
+            border-left: 4px solid #28a745;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+            page-break-inside: avoid;
+        }
+        
+        .info {
+            background: #d1ecf1;
+            border-left: 4px solid #17a2b8;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+            page-break-inside: avoid;
+        }
+        
+        .divider {
+            height: 2px;
+            background: #52b788;
+            margin: 30px 0;
+            page-break-after: avoid;
+        }
+        
+        .footer {
+            margin-top: 60px;
+            padding-top: 20px;
+            border-top: 2px solid #52b788;
+            text-align: center;
+            color: #666;
+            font-size: 12px;
+            page-break-inside: avoid;
+        }
+        
+        .section-number {
+            display: inline-block;
+            background: #52b788;
+            color: white;
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 35px;
+            margin-right: 10px;
+            font-weight: bold;
+        }
+        
+        h2 .section-number {
+            margin-right: 15px;
+        }
+        
+        @media print {
+            body {
+                background: white;
+            }
+            .container {
+                padding: 0;
+            }
+            a {
+                color: #2d5a52;
+                text-decoration: none;
+            }
+            a:after {
+                content: " (" attr(href) ")";
+                font-size: 10px;
+                color: #666;
+            }
+        }
+        
+        .page-break {
+            page-break-after: always;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>HAMH Deployment Guide</h1>
+            <div class="tagline">Hermes Agent Management Hub</div>
+            <div class="tagline" style="font-size: 16px; font-style: italic; margin-top: 15px;">
+                "You got them Hermes Agents, we got a Boss for them."
+            </div>
+            <div class="company">
+                <strong>Oddsify Labs</strong> — A Collins & Collins Technologies Company<br>
+                Hostinger VPS Setup Guide
+            </div>
+        </div>
+        
+        <!-- Table of Contents -->
+        <div class="toc">
+            <h2 style="margin-top: 0;">Table of Contents</h2>
+            <ul>
+                <li><a href="#prerequisites">Prerequisites</a></li>
+                <li><a href="#step1">Step 1: Initial VPS Setup</a></li>
+                <li><a href="#step2">Step 2: Clone/Setup Manager Agent</a></li>
+                <li><a href="#step3">Step 3: Setup SSH Keys</a></li>
+                <li><a href="#step4">Step 4: Run Manager Agent</a></li>
+                <li><a href="#step5">Step 5: Setup Reverse Proxy (Nginx)</a></li>
+                <li><a href="#step6">Step 6: SSL Certificate</a></li>
+                <li><a href="#step7">Step 7: Firewall Setup</a></li>
+                <li><a href="#step8">Step 8: Connect Dashboard</a></li>
+                <li><a href="#monitoring">Monitoring & Logs</a></li>
+                <li><a href="#troubleshooting">Troubleshooting</a></li>
+                <li><a href="#security">Security Checklist</a></li>
+                <li><a href="#scaling">Scaling</a></li>
+            </ul>
+        </div>
+        
+        <!-- Prerequisites -->
+        <h2 id="prerequisites"><span class="section-number">0</span>Prerequisites</h2>
+        <p>Before you begin, ensure you have the following:</p>
+        <ul class="checklist">
+            <li>Hostinger VPS account with SSH access</li>
+            <li>SSH key pair for connecting to Miah Hermes VPS</li>
+            <li>A domain name (for SSL certificate)</li>
+            <li>Basic Linux/bash command line knowledge</li>
+            <li>Text editor knowledge (nano, vi, etc.)</li>
+        </ul>
+        
+        <div class="divider"></div>
+        
+        <!-- Step 1 -->
+        <h2 id="step1"><span class="section-number">1</span>Initial VPS Setup</h2>
+        
+        <h3>1.1 SSH into your Hostinger VPS</h3>
+        <pre><code>ssh root@your-hostinger-ip-address</code></pre>
+        <p>Replace <code>your-hostinger-ip-address</code> with your actual Hostinger VPS IP.</p>
+        
+        <h3>1.2 Update system packages</h3>
+        <pre><code>apt update && apt upgrade -y</code></pre>
+        <p>This ensures all system packages are up-to-date and secure.</p>
+        
+        <h3>1.3 Install Node.js and npm</h3>
+        <pre><code>curl -sL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+apt install -y nodejs
+node --version  # Should be v18+
+npm --version</code></pre>
+        <p>This installs Node.js v18 (or later) and npm, required for running HAMH.</p>
+        
+        <h3>1.4 Install additional tools</h3>
+        <pre><code>apt install -y git curl wget nano supervisor</code></pre>
+        
+        <div class="success">
+            <strong>✓ Step 1 Complete:</strong> Your VPS is now prepared with Node.js and essential tools.
+        </div>
+        
+        <div class="page-break"></div>
+        
+        <!-- Step 2 -->
+        <h2 id="step2"><span class="section-number">2</span>Clone/Setup Manager Agent</h2>
+        
+        <h3>2.1 Create app directory</h3>
+        <pre><code>mkdir -p /app/manager-agent
+cd /app/manager-agent</code></pre>
+        
+        <h3>2.2 Copy files to VPS</h3>
+        <p><strong>Option A: Using git (recommended)</strong></p>
+        <pre><code>git clone https://github.com/oddsify-labs/hamh.git .
+cd /app/manager-agent</code></pre>
+        
+        <p><strong>Option B: Using scp from your local machine</strong></p>
+        <pre><code>scp package.json root@your-hostinger-ip:/app/manager-agent/
+scp manager-agent-server.js root@your-hostinger-ip:/app/manager-agent/
+scp .env.example root@your-hostinger-ip:/app/manager-agent/</code></pre>
+        
+        <h3>2.3 Install dependencies</h3>
+        <pre><code>cd /app/manager-agent
+npm install</code></pre>
+        
+        <h3>2.4 Create and configure .env file</h3>
+        <pre><code>cp .env.example .env
+nano .env</code></pre>
+        
+        <p>Edit the following variables in your <code>.env</code> file:</p>
+        <pre><code>PORT=3000
+NODE_ENV=production
+
+# Miah Hermes (VPS SSH)
+MIAH_HOST=your-miah-vps-ip
+MIAH_USER=root
+MIAH_KEY_PATH=/root/.ssh/miah_key
+
+# Markus Bot (Local HTTP)
+MARKUS_API=http://192.168.1.100:3001
+
+# Alexbet Sharp (Railway HTTPS)
+ALEXBET_API=https://alexbet-sharp.railway.app
+ALEXBET_KEY=your-railway-api-key</code></pre>
+        
+        <p>Save the file with <kbd>Ctrl+X</kbd>, then <kbd>Y</kbd>, then <kbd>Enter</kbd>.</p>
+        
+        <div class="success">
+            <strong>✓ Step 2 Complete:</strong> HAMH is now installed and configured.
+        </div>
+        
+        <div class="page-break"></div>
+        
+        <!-- Step 3 -->
+        <h2 id="step3"><span class="section-number">3</span>Setup SSH Keys (for Miah Hermes)</h2>
+        
+        <h3>3.1 Create SSH directory</h3>
+        <pre><code>mkdir -p /root/.ssh
+chmod 700 /root/.ssh</code></pre>
+        
+        <h3>3.2 Add Miah Hermes SSH key</h3>
+        <p>Copy your private SSH key from your local machine:</p>
+        <pre><code># From your local machine:
+scp ~/.ssh/miah_key root@your-hostinger-ip:/root/.ssh/miah_key</code></pre>
+        
+        <p>Set proper permissions:</p>
+        <pre><code>chmod 600 /root/.ssh/miah_key</code></pre>
+        
+        <h3>3.3 Test SSH connection</h3>
+        <pre><code>ssh -i /root/.ssh/miah_key root@miah-vps-ip "echo 'SSH working!'"</code></pre>
+        
+        <div class="success">
+            <strong>✓ Step 3 Complete:</strong> HAMH can now connect to Miah Hermes via SSH.
+        </div>
+        
+        <div class="page-break"></div>
+        
+        <!-- Step 4 -->
+        <h2 id="step4"><span class="section-number">4</span>Run Manager Agent</h2>
+        
+        <h3>4.1 Test locally first</h3>
+        <pre><code>cd /app/manager-agent
+npm start</code></pre>
+        
+        <p>You should see:</p>
+        <pre><code>╔════════════════════════════════════════╗
+║  MANAGER AGENT SERVER                  ║
+║  Oddsify Labs - CEO Command Center    ║
+║  Running on port 3000                  ║
+╚════════════════════════════════════════╝</code></pre>
+        
+        <p>Test the health endpoint in another terminal:</p>
+        <pre><code>curl http://localhost:3000/health</code></pre>
+        
+        <p>Should return:</p>
+        <pre><code>{"status":"healthy","timestamp":"...","uptime":...}</code></pre>
+        
+        <p>Stop the server with <kbd>Ctrl+C</kbd>.</p>
+        
+        <h3>4.2 Setup PM2 (production process manager)</h3>
+        <pre><code>npm install -g pm2
+pm2 start manager-agent-server.js --name "manager-agent"
+pm2 save
+pm2 startup</code></pre>
+        
+        <p>Verify it's running:</p>
+        <pre><code>pm2 status</code></pre>
+        
+        <div class="success">
+            <strong>✓ Step 4 Complete:</strong> HAMH is now running with PM2 in production mode.
+        </div>
+        
+        <div class="page-break"></div>
+        
+        <!-- Step 5 -->
+        <h2 id="step5"><span class="section-number">5</span>Setup Reverse Proxy (Nginx)</h2>
+        
+        <h3>5.1 Install Nginx</h3>
+        <pre><code>apt install -y nginx</code></pre>
+        
+        <h3>5.2 Create Nginx configuration</h3>
+        <pre><code>nano /etc/nginx/sites-available/manager-agent</code></pre>
+        
+        <p>Paste the following configuration:</p>
+        <pre><code>server {
+    listen 80;
+    server_name your-domain.com;
+
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # CORS headers
+    add_header 'Access-Control-Allow-Origin' '*' always;
+    add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
+    add_header 'Access-Control-Allow-Headers' 'Content-Type, Authorization' always;
+
+    if ($request_method = 'OPTIONS') {
+        return 204;
+    }
+}</code></pre>
+        
+        <p>Replace <code>your-domain.com</code> with your actual domain.</p>
+        
+        <h3>5.3 Enable the configuration</h3>
+        <pre><code>ln -s /etc/nginx/sites-available/manager-agent /etc/nginx/sites-enabled/
+rm /etc/nginx/sites-enabled/default
+nginx -t
+systemctl restart nginx</code></pre>
+        
+        <div class="success">
+            <strong>✓ Step 5 Complete:</strong> Nginx is now proxying requests to HAMH on port 3000.
+        </div>
+        
+        <div class="page-break"></div>
+        
+        <!-- Step 6 -->
+        <h2 id="step6"><span class="section-number">6</span>SSL Certificate (Let's Encrypt)</h2>
+        
+        <h3>6.1 Install Certbot</h3>
+        <pre><code>apt install -y certbot python3-certbot-nginx</code></pre>
+        
+        <h3>6.2 Get SSL certificate</h3>
+        <pre><code>certbot --nginx -d your-domain.com</code></pre>
+        
+        <p>Follow the interactive prompts. Certbot will automatically update your Nginx configuration.</p>
+        
+        <h3>6.3 Enable auto-renewal</h3>
+        <pre><code>systemctl enable certbot.timer
+systemctl start certbot.timer</code></pre>
+        
+        <div class="success">
+            <strong>✓ Step 6 Complete:</strong> Your domain now has an SSL certificate with auto-renewal enabled.
+        </div>
+        
+        <div class="page-break"></div>
+        
+        <!-- Step 7 -->
+        <h2 id="step7"><span class="section-number">7</span>Firewall Setup</h2>
+        
+        <h3>7.1 Enable UFW (Uncomplicated Firewall)</h3>
+        <pre><code>ufw allow 22/tcp   # SSH
+ufw allow 80/tcp   # HTTP
+ufw allow 443/tcp  # HTTPS
+ufw enable</code></pre>
+        
+        <div class="success">
+            <strong>✓ Step 7 Complete:</strong> Firewall is configured to allow HTTP, HTTPS, and SSH.
+        </div>
+        
+        <div class="page-break"></div>
+        
+        <!-- Step 8 -->
+        <h2 id="step8"><span class="section-number">8</span>Connect Dashboard</h2>
+        
+        <p>In your HAMH dashboard HTML, add the following script tags:</p>
+        <pre><code>&lt;script&gt;
+  window.MANAGER_AGENT_URL = 'https://your-domain.com';
+&lt;/script&gt;
+&lt;script src="dashboard-api-client.js"&gt;&lt;/script&gt;</code></pre>
+        
+        <p>Your dashboard will now connect to your deployed HAMH instance.</p>
+        
+        <div class="divider"></div>
+        
+        <!-- Monitoring -->
+        <h2 id="monitoring"><span class="section-number">9</span>Monitoring & Logs</h2>
+        
+        <h3>View Manager Agent logs</h3>
+        <pre><code>pm2 logs manager-agent</code></pre>
+        
+        <h3>Monitor system resources</h3>
+        <pre><code>pm2 monit</code></pre>
+        
+        <h3>View Nginx access logs</h3>
+        <pre><code>tail -f /var/log/nginx/access.log</code></pre>
+        
+        <h3>View Nginx error logs</h3>
+        <pre><code>tail -f /var/log/nginx/error.log</code></pre>
+        
+        <div class="page-break"></div>
+        
+        <!-- Troubleshooting -->
+        <h2 id="troubleshooting"><span class="section-number">10</span>Troubleshooting</h2>
+        
+        <h3>Manager Agent won't start</h3>
+        <pre><code>pm2 logs manager-agent --err</code></pre>
+        <p>Check the error output and verify your <code>.env</code> configuration.</p>
+        
+        <h3>Can't connect to Miah Hermes</h3>
+        <pre><code>ssh -i /root/.ssh/miah_key root@miah-vps-ip</code></pre>
+        <p>Verify the SSH key is present and correct IP address is configured.</p>
+        
+        <h3>Nginx 502 Bad Gateway</h3>
+        <p>Check the following:</p>
+        <ul class="checklist">
+            <li>Node.js is running: <code>pm2 status</code></li>
+            <li>Firewall allows traffic: <code>ufw status</code></li>
+            <li>Nginx config is valid: <code>nginx -t</code></li>
+        </ul>
+        
+        <h3>CORS errors in dashboard</h3>
+        <p>Ensure your Nginx config includes:</p>
+        <pre><code>add_header 'Access-Control-Allow-Origin' '*' always;</code></pre>
+        
+        <div class="page-break"></div>
+        
+        <!-- Security -->
+        <h2 id="security"><span class="section-number">11</span>Security Checklist</h2>
+        
+        <p>Before going to production, verify:</p>
+        <ul class="checklist">
+            <li>SSH keys protected with correct permissions (chmod 600)</li>
+            <li>Firewall enabled (UFW) with only necessary ports open</li>
+            <li>SSL certificate installed and auto-renewal configured</li>
+            <li>Environment variables in .env (never hardcoded)</li>
+            <li>API keys never logged to console</li>
+            <li>Database credentials secured</li>
+            <li>Regular backups enabled</li>
+            <li>PM2 startup script configured for automatic restart on reboot</li>
+        </ul>
+        
+        <!-- Scaling -->
+        <h2 id="scaling"><span class="section-number">12</span>Scaling (Future)</h2>
+        
+        <p>When you're ready to scale beyond a single VPS:</p>
+        <ol>
+            <li><strong>Database:</strong> Add MongoDB or PostgreSQL for persistent task storage</li>
+            <li><strong>Cache Layer:</strong> Add Redis for task queue caching and performance</li>
+            <li><strong>Load Balancing:</strong> Deploy multiple HAMH instances behind a load balancer</li>
+            <li><strong>Monitoring:</strong> Add DataDog, New Relic, or similar monitoring solution</li>
+            <li><strong>Backup Strategy:</strong> Implement automated daily backups to cloud storage</li>
+        </ol>
+        
+        <!-- Footer -->
+        <div class="footer">
+            <p><strong>HAMH — Hermes Agent Management Hub</strong></p>
+            <p>"You got them Hermes Agents, we got a Boss for them."</p>
+            <p>By Oddsify Labs — A Collins & Collins Technologies Company</p>
+            <p>Documentation Version 1.0 | Generated 2026</p>
+            <p style="margin-top: 15px;">
+                <strong>Support:</strong> dev@oddsify-labs.com | 
+                <strong>Website:</strong> https://oddsify-labs.com | 
+                <strong>GitHub:</strong> https://github.com/oddsify-labs/hamh
+            </p>
+        </div>
+    </div>
+</body>
+</html>
