@@ -1,4 +1,4 @@
-# HAMH — Hermes Agent Management Hub
+# HAMH | Hermes Agent Management Hub
 
 > **You got them Hermes Agents, we got a Boss for them.**
 >
