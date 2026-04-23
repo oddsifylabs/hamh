@@ -34,7 +34,7 @@ const WORKERS = {
     host: process.env.MIAH_HOST || 'your-vps-ip',
     user: process.env.MIAH_USER || 'root',
     privateKey: process.env.MIAH_KEY_PATH || '/home/manager/.ssh/miah_key',
-    baseUrl: null, // SSH only
+    baseUrl: null,
     capabilities: ['write-code', 'deploy', 'debug', 'code-review', 'automation']
   },
   markus: {
@@ -132,7 +132,6 @@ class TaskQueue {
       timestamp: new Date(),
       message
     });
-    // Keep last 100 logs
     if (this.activityLog.length > 100) {
       this.activityLog.shift();
     }
@@ -150,18 +149,9 @@ const taskQueue = new TaskQueue();
 // ============================================
 
 class CommandParser {
-  /**
-   * Parse CEO command like:
-   * - "@miah deploy code"
-   * - "@markus post earnings update"
-   * - "@alexbet scan NFL markets"
-   * - "status report"
-   * - "pause all"
-   */
   static parse(command) {
     const trimmed = command.trim();
 
-    // Global commands
     if (trimmed.toLowerCase() === 'status report') {
       return { type: 'status-report' };
     }
@@ -172,7 +162,6 @@ class CommandParser {
       return { type: 'resume-all' };
     }
 
-    // @worker commands
     const mentionMatch = trimmed.match(/^@(miah|markus|alexbet)\s+(.+)$/i);
     if (mentionMatch) {
       const [_, workerId, taskDesc] = mentionMatch;
@@ -217,9 +206,6 @@ class CommandParser {
 // ============================================
 
 class TaskExecutor {
-  /**
-   * Execute task on worker via appropriate transport
-   */
   static async execute(task) {
     const worker = WORKERS[task.workerId];
     
@@ -240,9 +226,6 @@ class TaskExecutor {
     }
   }
 
-  /**
-   * Execute via SSH (for Miah Hermes on VPS)
-   */
   static async executeSsh(task, worker) {
     const ssh = new NodeSSH();
     
@@ -254,7 +237,6 @@ class TaskExecutor {
         readyTimeout: 10000
       });
 
-      // Map task types to bash commands
       const commands = {
         'deploy': 'cd /app/miah-hermes && npm run deploy',
         'write-code': `cd /app/miah-hermes && npm run task -- "${task.description}"`,
@@ -278,9 +260,6 @@ class TaskExecutor {
     }
   }
 
-  /**
-   * Execute via HTTP (for Markus & Alexbet)
-   */
   static async executeHttp(task, worker) {
     try {
       const response = await axios.post(`${worker.baseUrl}/task`, {
@@ -308,10 +287,6 @@ class TaskExecutor {
 // API ENDPOINTS
 // ============================================
 
-/**
- * POST /command
- * Receive CEO command from dashboard
- */
 app.post('/command', async (req, res) => {
   const { command } = req.body;
 
@@ -347,16 +322,13 @@ app.post('/command', async (req, res) => {
     if (parsed.type === 'worker-task') {
       const { workerId, description } = parsed;
 
-      // Validate worker exists
       if (!WORKERS[workerId]) {
         return res.status(400).json({ error: `Unknown worker: ${workerId}` });
       }
 
-      // Create task
       const taskTemplate = CommandParser.getTaskTemplate(workerId, description);
       const task = taskQueue.enqueueTask(workerId, taskTemplate);
 
-      // Execute immediately (or queue for processing)
       const execution = await TaskExecutor.execute(task);
 
       if (execution.success) {
@@ -382,10 +354,6 @@ app.post('/command', async (req, res) => {
   }
 });
 
-/**
- * GET /status
- * Get current system status (for dashboard)
- */
 app.get('/status', (req, res) => {
   res.json({
     timestamp: new Date(),
@@ -413,10 +381,6 @@ app.get('/status', (req, res) => {
   });
 });
 
-/**
- * GET /queue/:workerId
- * Get queue for specific worker
- */
 app.get('/queue/:workerId', (req, res) => {
   const { workerId } = req.params;
 
@@ -431,10 +395,6 @@ app.get('/queue/:workerId', (req, res) => {
   });
 });
 
-/**
- * POST /task/:taskId/complete
- * Worker reports task completion (webhook from worker)
- */
 app.post('/task/:taskId/complete', (req, res) => {
   const { taskId } = req.params;
   const { workerId, result } = req.body;
@@ -452,10 +412,6 @@ app.post('/task/:taskId/complete', (req, res) => {
   res.json({ status: 'completed', task });
 });
 
-/**
- * POST /task/:taskId/fail
- * Worker reports task failure
- */
 app.post('/task/:taskId/fail', (req, res) => {
   const { taskId } = req.params;
   const { workerId, error } = req.body;
@@ -473,27 +429,14 @@ app.post('/task/:taskId/fail', (req, res) => {
   res.json({ status: 'failed', task });
 });
 
-/**
- * GET /activity
- * Get activity log
- */
 app.get('/activity', (req, res) => {
   const limit = req.query.limit || 50;
   res.json({ log: taskQueue.getActivityLog(limit) });
 });
 
-// ============================================
-// LEGACY INTEGRATION ENDPOINTS
-// ============================================
-
-/**
- * POST /legacy/task
- * Accept tasks from existing system
- */
 app.post('/legacy/task', (req, res) => {
   const { agentId, action, params } = req.body;
 
-  // Map legacy agent IDs to new worker IDs
   const legacyMap = {
     'coder': 'miah',
     'social': 'markus',
@@ -505,7 +448,6 @@ app.post('/legacy/task', (req, res) => {
     return res.status(400).json({ error: 'Unknown legacy agent' });
   }
 
-  // Convert legacy action to new format
   const task = taskQueue.enqueueTask(workerId, {
     description: `${action}: ${JSON.stringify(params)}`,
     type: action,
@@ -516,10 +458,6 @@ app.post('/legacy/task', (req, res) => {
   res.json({ status: 'queued', task });
 });
 
-/**
- * GET /legacy/status/:agentId
- * Legacy status endpoint
- */
 app.get('/legacy/status/:agentId', (req, res) => {
   const { agentId } = req.params;
   
@@ -544,10 +482,6 @@ app.get('/legacy/status/:agentId', (req, res) => {
   });
 });
 
-// ============================================
-// HEALTH CHECK
-// ============================================
-
 app.get('/health', (req, res) => {
   res.json({
     status: 'healthy',
@@ -557,31 +491,10 @@ app.get('/health', (req, res) => {
 });
 
 // ============================================
-// ROOT ENDPOINT & DASHBOARD
+// ROOT ENDPOINT - DASHBOARD HOMEPAGE
 // ============================================
 
 app.get('/', (req, res) => {
-  res.json({
-    name: 'HAMH - Hermes Agent Management Hub',
-    tagline: 'You got them Hermes Agents, we got a Boss for them.',
-    status: 'healthy',
-    timestamp: new Date(),
-    uptime: process.uptime(),
-    endpoints: {
-      health: '/health',
-      status: '/status',
-      command: 'POST /command',
-      queue: '/queue/:workerId',
-      activity: '/activity',
-      legacy: '/legacy/task'
-    },
-    documentation: 'https://github.com/oddsify-labs/hamh',
-    support: 'dev@oddsify-labs.com'
-  });
-});
-
-// Simple HTML Dashboard
-app.get('/dashboard', (req, res) => {
   res.send(`
     <!DOCTYPE html>
     <html>
@@ -594,6 +507,7 @@ app.get('/dashboard', (req, res) => {
           background: linear-gradient(135deg, #1a3a3a 0%, #2d5a52 100%);
           color: #fff;
           padding: 40px 20px;
+          min-height: 100vh;
         }
         .container {
           max-width: 1200px;
@@ -622,6 +536,11 @@ app.get('/dashboard', (req, res) => {
           border-radius: 8px;
           padding: 20px;
           backdrop-filter: blur(10px);
+          transition: transform 0.3s, background 0.3s;
+        }
+        .card:hover {
+          transform: translateY(-5px);
+          background: rgba(255,255,255,0.15);
         }
         .card h3 {
           color: #52b788;
@@ -640,6 +559,7 @@ app.get('/dashboard', (req, res) => {
           border-radius: 4px;
           font-family: monospace;
           font-size: 12px;
+          border-left: 3px solid #52b788;
         }
         .status {
           background: #52b788;
@@ -657,6 +577,14 @@ app.get('/dashboard', (req, res) => {
         }
         a:hover {
           opacity: 0.8;
+          text-decoration: underline;
+        }
+        .footer {
+          margin-top: 60px;
+          opacity: 0.7;
+          font-size: 14px;
+          border-top: 1px solid rgba(82,183,136,0.2);
+          padding-top: 20px;
         }
       </style>
     </head>
@@ -709,7 +637,7 @@ app.get('/dashboard', (req, res) => {
           </div>
         </div>
         
-        <div style="margin-top: 60px; opacity: 0.7; font-size: 14px;">
+        <div class="footer">
           <p>By <strong>Oddsify Labs</strong> — A Collins & Collins Technologies Company</p>
           <p style="margin-top: 10px;">
             <a href="https://oddsify-labs.com">Website</a> • 
