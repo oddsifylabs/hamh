@@ -1,6 +1,6 @@
 # 🪟 HAMH on Windows — 3 Easy Methods
 
-Pick the method that works best for you:
+Choose the method that works best for you:
 
 ---
 
@@ -197,4 +197,4 @@ bash setup-github.sh YOUR_TOKEN
 
 **"You got them Hermes Agents, we got a Boss for them."** 🚀
 
-Pick a method above and get your HAMH on GitHub! ⭐
+Choose a method above and get your HAMH on GitHub! ⭐
