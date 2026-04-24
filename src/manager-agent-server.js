@@ -28,6 +28,16 @@ app.use(express.static('public'));
 // ============================================
 
 const WORKERS = {
+  manager: {
+    name: 'Manager Agent',
+    type: 'director-facing',
+    transport: 'internal',
+    role: 'orchestrator',
+    host: null,
+    baseUrl: null,
+    capabilities: ['task-orchestration', 'flow-control', 'agent-delegation', 'status-synthesis', 'director-reports'],
+    description: 'The only agent that speaks with the Director. Controls task flow between all agents.'
+  },
   miah: {
     name: 'Miah Hermes',
     type: 'vps',
@@ -36,7 +46,8 @@ const WORKERS = {
     user: process.env.MIAH_USER || 'root',
     privateKey: process.env.MIAH_KEY_PATH || '/home/manager/.ssh/miah_key',
     baseUrl: null,
-    capabilities: ['write-code', 'deploy', 'debug', 'code-review', 'automation']
+    capabilities: ['write-code', 'deploy', 'debug', 'code-review', 'automation'],
+    reportsTo: 'manager'
   },
   markus: {
     name: 'Markus Bot',
@@ -44,7 +55,8 @@ const WORKERS = {
     transport: 'http',
     host: null,
     baseUrl: process.env.MARKUS_API || 'http://localhost:3001',
-    capabilities: ['post-x', 'curate-content', 'engagement', 'analytics', 'schedule']
+    capabilities: ['post-x', 'curate-content', 'engagement', 'analytics', 'schedule'],
+    reportsTo: 'manager'
   },
   alexbet: {
     name: 'Alexbet Sharp V2',
@@ -52,7 +64,8 @@ const WORKERS = {
     transport: 'http',
     baseUrl: process.env.ALEXBET_API || 'https://alexbet-sharp.railway.app',
     apiKey: process.env.ALEXBET_KEY,
-    capabilities: ['scan-markets', 'kelly-sizing', 'edge-detection', 'alerts', 'pnl-tracking']
+    capabilities: ['scan-markets', 'kelly-sizing', 'edge-detection', 'alerts', 'pnl-tracking'],
+    reportsTo: 'manager'
   }
 };
 
@@ -63,15 +76,22 @@ const WORKERS = {
 class TaskQueue {
   constructor() {
     this.queues = {
+      manager: [],
       miah: [],
       markus: [],
       alexbet: []
     };
     this.completedTasks = [];
     this.activityLog = [];
+    this.managerFlowControl = {
+      mode: 'auto', // 'auto' | 'manual'
+      pendingApprovals: [],
+      agentReports: [],
+      directorInbox: []
+    };
   }
 
-  enqueueTask(workerId, task) {
+  enqueueTask(workerId, task, options = {}) {
     const taskId = uuidv4();
     const fullTask = {
       id: taskId,
@@ -80,12 +100,93 @@ class TaskQueue {
       status: 'queued',
       createdAt: new Date(),
       startedAt: null,
-      completedAt: null
+      completedAt: null,
+      source: options.source || 'director',
+      approvedByManager: options.source === 'director' ? false : true,
+      requiresApproval: WORKERS[workerId]?.reportsTo === 'manager' && options.source === 'agent'
     };
     
-    this.queues[workerId].push(fullTask);
-    this.logActivity(`Task queued for ${WORKERS[workerId].name}: ${task.description}`);
+    // If task is from an agent to manager, route to manager queue
+    if (workerId === 'manager' || options.source === 'agent') {
+      this.queues.manager.push(fullTask);
+      this.logActivity(`Agent task submitted to Manager: ${task.description}`);
+    } else {
+      this.queues[workerId].push(fullTask);
+      this.logActivity(`Task queued for ${WORKERS[workerId].name}: ${task.description}`);
+    }
+    
     return fullTask;
+  }
+
+  // Manager delegates task to a worker
+  delegateTask(managerTaskId, targetWorkerId, taskData) {
+    const managerQueue = this.queues.manager;
+    const taskIndex = managerQueue.findIndex(t => t.id === managerTaskId);
+    
+    if (taskIndex === -1) return null;
+    
+    const managerTask = managerQueue[taskIndex];
+    managerTask.status = 'delegated';
+    managerTask.delegatedTo = targetWorkerId;
+    managerTask.delegatedAt = new Date();
+    
+    const delegatedTask = this.enqueueTask(targetWorkerId, {
+      description: taskData.description || managerTask.description,
+      type: taskData.type || managerTask.type || 'custom',
+      parentTaskId: managerTaskId,
+      managerDirective: taskData.directive || null
+    }, { source: 'manager' });
+    
+    this.logActivity(`Manager delegated task to ${WORKERS[targetWorkerId]?.name || targetWorkerId}: ${delegatedTask.description}`);
+    return delegatedTask;
+  }
+
+  // Manager approves a task from the director
+  approveTask(taskId) {
+    const queue = this.queues.manager;
+    const task = queue.find(t => t.id === taskId);
+    if (!task) return null;
+    
+    task.approvedByManager = true;
+    task.status = 'approved';
+    task.approvedAt = new Date();
+    
+    this.logActivity(`Manager approved task: ${task.description}`);
+    return task;
+  }
+
+  // Agent reports status back to manager
+  agentReport(agentId, report) {
+    const reportEntry = {
+      id: uuidv4(),
+      agentId,
+      ...report,
+      timestamp: new Date(),
+      status: 'unread'
+    };
+    this.managerFlowControl.agentReports.push(reportEntry);
+    if (this.managerFlowControl.agentReports.length > 100) {
+      this.managerFlowControl.agentReports.shift();
+    }
+    this.logActivity(`Report from ${WORKERS[agentId]?.name || agentId}: ${report.summary || 'Status update'}`);
+    return reportEntry;
+  }
+
+  // Manager sends message to Director
+  directorMessage(message) {
+    const msg = {
+      id: uuidv4(),
+      from: 'manager',
+      message,
+      timestamp: new Date(),
+      status: 'unread'
+    };
+    this.managerFlowControl.directorInbox.push(msg);
+    if (this.managerFlowControl.directorInbox.length > 50) {
+      this.managerFlowControl.directorInbox.shift();
+    }
+    this.logActivity(`Manager → Director: ${message}`);
+    return msg;
   }
 
   getQueue(workerId) {
@@ -109,6 +210,17 @@ class TaskQueue {
     
     this.completedTasks.push(task);
     this.logActivity(`✓ Completed: ${task.description}`);
+    
+    // If completed by a worker reporting to manager, notify manager
+    if (WORKERS[workerId]?.reportsTo === 'manager' && task.parentTaskId) {
+      this.agentReport(workerId, {
+        type: 'task-complete',
+        parentTaskId: task.parentTaskId,
+        summary: `Task completed: ${task.description}`,
+        result
+      });
+    }
+    
     return task;
   }
 
@@ -125,6 +237,17 @@ class TaskQueue {
     
     this.completedTasks.push(task);
     this.logActivity(`✗ Failed: ${task.description} - ${error}`);
+    
+    // If failed by a worker reporting to manager, notify manager
+    if (WORKERS[workerId]?.reportsTo === 'manager' && task.parentTaskId) {
+      this.agentReport(workerId, {
+        type: 'task-failed',
+        parentTaskId: task.parentTaskId,
+        summary: `Task failed: ${task.description}`,
+        error
+      });
+    }
+    
     return task;
   }
 
@@ -140,6 +263,24 @@ class TaskQueue {
 
   getActivityLog(limit = 20) {
     return this.activityLog.slice(-limit).reverse();
+  }
+
+  getManagerStatus() {
+    return {
+      mode: this.managerFlowControl.mode,
+      queueLength: this.queues.manager.length,
+      pendingApprovals: this.queues.manager.filter(t => !t.approvedByManager && t.source === 'director').length,
+      agentReports: this.managerFlowControl.agentReports.filter(r => r.status === 'unread').length,
+      directorInbox: this.managerFlowControl.directorInbox.filter(m => m.status === 'unread').length,
+      recentReports: this.managerFlowControl.agentReports.slice(-10).reverse(),
+      directorMessages: this.managerFlowControl.directorInbox.slice(-10).reverse()
+    };
+  }
+
+  setFlowControl(mode) {
+    this.managerFlowControl.mode = mode;
+    this.logActivity(`Manager flow control set to: ${mode}`);
+    return this.managerFlowControl.mode;
   }
 }
 
@@ -163,7 +304,27 @@ class CommandParser {
       return { type: 'resume-all' };
     }
 
-    const mentionMatch = trimmed.match(/^@(miah|markus|alexbet)\s+(.+)$/i);
+    // Director speaking directly to Manager
+    const managerMatch = trimmed.match(/^@manager\s+(.+)$/i);
+    if (managerMatch) {
+      return {
+        type: 'manager-directive',
+        workerId: 'manager',
+        description: managerMatch[1]
+      };
+    }
+
+    // Agent submitting task to Manager
+    const agentToManagerMatch = trimmed.match(/^@manager\s+from\s+@(miah|markus|alexbet)\s*:\s*(.+)$/i);
+    if (agentToManagerMatch) {
+      return {
+        type: 'agent-to-manager',
+        agentId: agentToManagerMatch[1].toLowerCase(),
+        description: agentToManagerMatch[2]
+      };
+    }
+
+    const mentionMatch = trimmed.match(/^@(miah|markus|alexbet|manager)\s+(.+)$/i);
     if (mentionMatch) {
       const [_, workerId, taskDesc] = mentionMatch;
       return {
@@ -178,6 +339,12 @@ class CommandParser {
 
   static getTaskTemplate(workerId, description) {
     const templates = {
+      manager: {
+        'delegate': { description: `Delegate: ${description}`, type: 'delegate' },
+        'report': { description: `Report: ${description}`, type: 'director-report' },
+        'approve': { description: `Approve: ${description}`, type: 'approve' },
+        'flow': { description: `Flow control: ${description}`, type: 'flow-control' }
+      },
       miah: {
         'deploy': { description: 'Deploy latest code', type: 'deploy' },
         'code': { description: `Write code: ${description}`, type: 'write-code' },
@@ -289,7 +456,7 @@ class TaskExecutor {
 // ============================================
 
 app.post('/command', async (req, res) => {
-  const { command } = req.body;
+  const { command, source = 'director' } = req.body;
 
   if (!command || typeof command !== 'string') {
     return res.status(400).json({ error: 'Command required' });
@@ -297,7 +464,10 @@ app.post('/command', async (req, res) => {
 
   try {
     const parsed = CommandParser.parse(command);
-    taskQueue.logActivity(`CEO Command: ${command}`);
+    
+    // Log source appropriately
+    const sourceLabel = source === 'director' ? 'Director' : source;
+    taskQueue.logActivity(`${sourceLabel} Command: ${command}`);
 
     if (parsed.type === 'unknown') {
       return res.status(400).json({ error: 'Could not parse command', command });
@@ -307,10 +477,12 @@ app.post('/command', async (req, res) => {
       return res.json({
         type: 'status-report',
         queues: {
+          manager: taskQueue.getQueue('manager'),
           miah: taskQueue.getQueue('miah'),
           markus: taskQueue.getQueue('markus'),
           alexbet: taskQueue.getQueue('alexbet')
         },
+        manager: taskQueue.getManagerStatus(),
         timestamp: new Date()
       });
     }
@@ -318,6 +490,73 @@ app.post('/command', async (req, res) => {
     if (parsed.type === 'pause-all' || parsed.type === 'resume-all') {
       taskQueue.logActivity(parsed.type === 'pause-all' ? 'Pausing all agents' : 'Resuming all agents');
       return res.json({ type: parsed.type, status: 'acknowledged' });
+    }
+
+    // Director speaking to Manager
+    if (parsed.type === 'manager-directive') {
+      const taskTemplate = CommandParser.getTaskTemplate('manager', parsed.description);
+      const task = taskQueue.enqueueTask('manager', taskTemplate, { source: 'director' });
+      
+      // In auto mode, manager auto-approves and delegates
+      if (taskQueue.managerFlowControl.mode === 'auto') {
+        taskQueue.approveTask(task.id);
+        
+        // Simple auto-delegation: if directive mentions an agent, delegate there
+        const targetAgent = ['miah', 'markus', 'alexbet'].find(id => 
+          parsed.description.toLowerCase().includes(id)
+        );
+        
+        if (targetAgent) {
+          const delegated = taskQueue.delegateTask(task.id, targetAgent, {
+            description: parsed.description,
+            directive: 'Auto-delegated from Director via Manager'
+          });
+          
+          // Execute the delegated task
+          const execution = await TaskExecutor.execute(delegated);
+          if (execution.success) {
+            taskQueue.completeTask(targetAgent, delegated.id, execution.result);
+          } else {
+            taskQueue.failTask(targetAgent, delegated.id, execution.error);
+          }
+          
+          return res.json({
+            status: 'success',
+            flow: 'director → manager → agent',
+            managerTask: task,
+            delegatedTask: delegated,
+            result: execution.result || execution.error
+          });
+        }
+      }
+      
+      return res.json({
+        status: 'success',
+        flow: 'director → manager',
+        task,
+        mode: taskQueue.managerFlowControl.mode,
+        message: taskQueue.managerFlowControl.mode === 'manual' 
+          ? 'Task queued for manager approval'
+          : 'Task approved and processed by manager'
+      });
+    }
+
+    // Agent submitting task to Manager
+    if (parsed.type === 'agent-to-manager') {
+      const { agentId, description } = parsed;
+      
+      const task = taskQueue.enqueueTask('manager', {
+        description: `From ${WORKERS[agentId]?.name || agentId}: ${description}`,
+        type: 'agent-request',
+        requestingAgent: agentId
+      }, { source: 'agent' });
+      
+      return res.json({
+        status: 'success',
+        flow: 'agent → manager',
+        task,
+        message: 'Request submitted to Manager'
+      });
     }
 
     if (parsed.type === 'worker-task') {
@@ -328,7 +567,7 @@ app.post('/command', async (req, res) => {
       }
 
       const taskTemplate = CommandParser.getTaskTemplate(workerId, description);
-      const task = taskQueue.enqueueTask(workerId, taskTemplate);
+      const task = taskQueue.enqueueTask(workerId, taskTemplate, { source });
 
       const execution = await TaskExecutor.execute(task);
 
@@ -489,6 +728,172 @@ app.get('/health', (req, res) => {
     timestamp: new Date(),
     uptime: process.uptime()
   });
+});
+
+// ============================================
+// MANAGER AGENT ENDPOINTS
+// ============================================
+
+// Get manager status and flow control state
+app.get('/manager/status', (req, res) => {
+  res.json({
+    status: 'success',
+    manager: taskQueue.getManagerStatus(),
+    workers: Object.entries(WORKERS).reduce((acc, [id, w]) => {
+      acc[id] = {
+        name: w.name,
+        type: w.type,
+        role: w.role || 'worker',
+        reportsTo: w.reportsTo || null,
+        capabilities: w.capabilities,
+        status: 'active',
+        queueLength: taskQueue.getQueue(id).length
+      };
+      return acc;
+    }, {}),
+    timestamp: new Date()
+  });
+});
+
+// Set manager flow control mode (auto / manual)
+app.post('/manager/flow', (req, res) => {
+  const { mode } = req.body;
+  if (!mode || !['auto', 'manual'].includes(mode)) {
+    return res.status(400).json({ error: 'Mode must be "auto" or "manual"' });
+  }
+  const newMode = taskQueue.setFlowControl(mode);
+  res.json({ status: 'success', mode: newMode });
+});
+
+// Manager delegates a task to a worker
+app.post('/manager/delegate', async (req, res) => {
+  const { taskId, targetWorkerId, taskData } = req.body;
+
+  if (!taskId || !targetWorkerId || !WORKERS[targetWorkerId]) {
+    return res.status(400).json({ error: 'Invalid taskId or targetWorkerId' });
+  }
+
+  try {
+    const delegated = taskQueue.delegateTask(taskId, targetWorkerId, taskData || {});
+    if (!delegated) {
+      return res.status(404).json({ error: 'Manager task not found' });
+    }
+
+    // Execute if in auto mode
+    const execution = await TaskExecutor.execute(delegated);
+    if (execution.success) {
+      taskQueue.completeTask(targetWorkerId, delegated.id, execution.result);
+    } else {
+      taskQueue.failTask(targetWorkerId, delegated.id, execution.error);
+    }
+
+    res.json({
+      status: 'success',
+      flow: 'manager → agent',
+      delegatedTask: delegated,
+      execution: execution.success ? 'completed' : 'failed',
+      result: execution.result || execution.error
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Manager approves a task
+app.post('/manager/approve', (req, res) => {
+  const { taskId } = req.body;
+  if (!taskId) {
+    return res.status(400).json({ error: 'taskId required' });
+  }
+
+  const task = taskQueue.approveTask(taskId);
+  if (!task) {
+    return res.status(404).json({ error: 'Task not found' });
+  }
+
+  res.json({ status: 'success', task });
+});
+
+// Agent submits report to manager
+app.post('/manager/report', (req, res) => {
+  const { agentId, type, summary, result, error } = req.body;
+
+  if (!agentId || !WORKERS[agentId]) {
+    return res.status(400).json({ error: 'Invalid agentId' });
+  }
+
+  const report = taskQueue.agentReport(agentId, {
+    type: type || 'status-update',
+    summary: summary || 'Status update',
+    result,
+    error
+  });
+
+  res.json({ status: 'success', report });
+});
+
+// Manager sends message to Director
+app.post('/manager/message', (req, res) => {
+  const { message } = req.body;
+  if (!message) {
+    return res.status(400).json({ error: 'Message required' });
+  }
+
+  const msg = taskQueue.directorMessage(message);
+  res.json({ status: 'success', message: msg });
+});
+
+// Director reads manager messages
+app.get('/manager/inbox', (req, res) => {
+  const { status } = req.query;
+  let messages = taskQueue.managerFlowControl.directorInbox;
+  if (status) {
+    messages = messages.filter(m => m.status === status);
+  }
+  res.json({
+    status: 'success',
+    messages: messages.slice(-20).reverse(),
+    unreadCount: messages.filter(m => m.status === 'unread').length
+  });
+});
+
+// Mark director inbox message as read
+app.post('/manager/inbox/:messageId/read', (req, res) => {
+  const { messageId } = req.params;
+  const msg = taskQueue.managerFlowControl.directorInbox.find(m => m.id === messageId);
+  if (!msg) {
+    return res.status(404).json({ error: 'Message not found' });
+  }
+  msg.status = 'read';
+  res.json({ status: 'success', message: msg });
+});
+
+// Get agent reports for manager
+app.get('/manager/reports', (req, res) => {
+  const { agentId, status } = req.query;
+  let reports = taskQueue.managerFlowControl.agentReports;
+  if (agentId) {
+    reports = reports.filter(r => r.agentId === agentId);
+  }
+  if (status) {
+    reports = reports.filter(r => r.status === status);
+  }
+  res.json({
+    status: 'success',
+    reports: reports.slice(-20).reverse(),
+    unreadCount: reports.filter(r => r.status === 'unread').length
+  });
+});
+
+// Mark agent report as read
+app.post('/manager/reports/:reportId/read', (req, res) => {
+  const { reportId } = req.params;
+  const report = taskQueue.managerFlowControl.agentReports.find(r => r.id === reportId);
+  if (!report) {
+    return res.status(404).json({ error: 'Report not found' });
+  }
+  report.status = 'read';
+  res.json({ status: 'success', report });
 });
 
 // ============================================

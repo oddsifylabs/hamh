@@ -31,6 +31,17 @@ const state = {
 
 // Agent definitions (mirrors server config)
 const AGENTS = {
+  manager: {
+    id: 'manager',
+    name: 'Manager Agent',
+    type: 'director-facing',
+    transport: 'internal',
+    icon: '🎛️',
+    description: 'The only agent that speaks with the Director. Controls task flow between all agents.',
+    capabilities: ['task-orchestration', 'flow-control', 'agent-delegation', 'status-synthesis', 'director-reports'],
+    templates: ['delegate to @miah', 'status report', 'pause all', 'approve task'],
+    role: 'orchestrator',
+  },
   miah: {
     id: 'miah',
     name: 'Miah Hermes',
@@ -40,6 +51,7 @@ const AGENTS = {
     description: 'Software coder agent deployed on VPS',
     capabilities: ['write-code', 'deploy', 'debug', 'code-review', 'automation'],
     templates: ['deploy code', 'write feature', 'debug error', 'review PR'],
+    reportsTo: 'manager',
   },
   markus: {
     id: 'markus',
@@ -50,6 +62,7 @@ const AGENTS = {
     description: 'Social media manager running locally',
     capabilities: ['post-x', 'curate-content', 'engagement', 'analytics', 'schedule'],
     templates: ['post update', 'check engagement', 'schedule post', 'analytics report'],
+    reportsTo: 'manager',
   },
   alexbet: {
     id: 'alexbet',
@@ -60,6 +73,7 @@ const AGENTS = {
     description: 'Market scanner hosted on Railway',
     capabilities: ['scan-markets', 'kelly-sizing', 'edge-detection', 'alerts', 'pnl-tracking'],
     templates: ['scan markets', 'kelly sizing', 'edge detect', 'set alert'],
+    reportsTo: 'manager',
   },
 };
 
@@ -109,6 +123,47 @@ const api = {
       method: 'POST',
       body: { agentId, action, params },
     });
+  },
+
+  // Manager endpoints
+  async managerStatus() {
+    return this.request('/manager/status');
+  },
+
+  async setManagerFlow(mode) {
+    return this.request('/manager/flow', { method: 'POST', body: { mode } });
+  },
+
+  async delegateTask(taskId, targetWorkerId, taskData) {
+    return this.request('/manager/delegate', {
+      method: 'POST',
+      body: { taskId, targetWorkerId, taskData },
+    });
+  },
+
+  async approveTask(taskId) {
+    return this.request('/manager/approve', { method: 'POST', body: { taskId } });
+  },
+
+  async getManagerInbox(status) {
+    const qs = status ? `?status=${status}` : '';
+    return this.request(`/manager/inbox${qs}`);
+  },
+
+  async getManagerReports(agentId, status) {
+    const params = new URLSearchParams();
+    if (agentId) params.append('agentId', agentId);
+    if (status) params.append('status', status);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    return this.request(`/manager/reports${qs}`);
+  },
+
+  async readInboxMessage(messageId) {
+    return this.request(`/manager/inbox/${messageId}/read`, { method: 'POST' });
+  },
+
+  async readReport(reportId) {
+    return this.request(`/manager/reports/${reportId}/read`, { method: 'POST' });
   },
 };
 
@@ -211,6 +266,11 @@ async function syncData() {
       state.activityLog = activityData.log;
     }
 
+    // Update manager state if present
+    if (statusData.manager) {
+      state.manager = statusData.manager;
+    }
+
     // Build task lists from queues
     state.tasks.queued = [];
     state.tasks.running = [];
@@ -218,6 +278,7 @@ async function syncData() {
     state.tasks.failed = [];
 
     Object.entries(statusData.workers || {}).forEach(([id, worker]) => {
+      if (id === 'manager') return; // skip manager
       if (worker.queueLength > 0 && worker.currentTask) {
         state.tasks.queued.push({
           ...worker.currentTask,
@@ -249,6 +310,7 @@ async function syncData() {
     updateAgentsView();
     if (state.selectedAgent) updateAgentDetail(state.selectedAgent);
     updateTasksView();
+    updateManagerView();
   } catch (err) {
     console.error('Sync error:', err);
   }
@@ -357,6 +419,123 @@ function updateDashboard() {
 
   // Update badges
   $('#taskCountBadge').textContent = totalQueued;
+
+  // Update manager badge with pending items
+  const managerPending = (state.manager?.pendingApprovals || 0) + (state.manager?.agentReports || 0) + (state.manager?.directorInbox || 0);
+  $('#managerBadge').textContent = managerPending;
+  $('#managerBadge').style.display = managerPending > 0 ? 'flex' : 'none';
+}
+
+// ============================================
+// MANAGER VIEW
+// ============================================
+function updateManagerView() {
+  if (!state.manager) return;
+
+  const m = state.manager;
+
+  // Stats
+  $('#managerMode').textContent = m.mode === 'auto' ? 'Auto' : 'Manual';
+  $('#managerQueueCount').textContent = m.queueLength || 0;
+  $('#managerReportsCount').textContent = m.agentReports || 0;
+  $('#managerInboxCount').textContent = m.directorInbox || 0;
+
+  // Badges
+  $('#managerQueueBadge').textContent = m.queueLength || 0;
+  $('#managerReportsBadge').textContent = m.agentReports || 0;
+  $('#managerInboxBadge').textContent = m.directorInbox || 0;
+
+  // Flow status
+  const flowStatus = $('#flowStatus');
+  if (m.mode === 'auto') {
+    flowStatus.innerHTML = 'Manager is in <strong>Auto</strong> mode. Tasks are delegated automatically.';
+    $('#flowAuto').classList.add('active');
+    $('#flowManual').classList.remove('active');
+  } else {
+    flowStatus.innerHTML = 'Manager is in <strong>Manual</strong> mode. You must approve each task before delegation.';
+    $('#flowManual').classList.add('active');
+    $('#flowAuto').classList.remove('active');
+  }
+
+  // Manager Queue
+  const queueList = $('#managerQueueList');
+  queueList.innerHTML = '';
+  const managerWorker = state.workers?.manager;
+  if (managerWorker && managerWorker.queueLength > 0) {
+    // We don't have the actual queue items from /status, just count
+    // For now show a placeholder that updates when we have real data
+    const item = document.createElement('div');
+    item.className = 'queue-item';
+    item.innerHTML = `
+      <div class="queue-item-title">${managerWorker.queueLength} task(s) awaiting Manager</div>
+      <div class="queue-item-meta">Mode: ${m.mode}</div>
+    `;
+    queueList.appendChild(item);
+  } else {
+    queueList.innerHTML = '<div class="queue-empty">No tasks in manager queue</div>';
+  }
+
+  // Agent Reports
+  const reportsList = $('#managerReportsList');
+  reportsList.innerHTML = '';
+  if (m.recentReports && m.recentReports.length > 0) {
+    m.recentReports.forEach(report => {
+      const item = document.createElement('div');
+      item.className = 'queue-item';
+      const agent = AGENTS[report.agentId];
+      item.innerHTML = `
+        <div class="queue-item-title">${agent?.icon || '🤖'} ${report.summary || 'Report'}</div>
+        <div class="queue-item-meta">${formatTime(report.timestamp)} · ${agent?.name || report.agentId}</div>
+      `;
+      reportsList.appendChild(item);
+    });
+  } else {
+    reportsList.innerHTML = '<div class="queue-empty">No agent reports</div>';
+  }
+
+  // Director Inbox
+  const inboxList = $('#directorInboxList');
+  inboxList.innerHTML = '';
+  if (m.directorMessages && m.directorMessages.length > 0) {
+    m.directorMessages.forEach(msg => {
+      const item = document.createElement('div');
+      item.className = 'queue-item';
+      item.innerHTML = `
+        <div class="queue-item-title">${msg.status === 'unread' ? '🔴 ' : ''}${msg.message}</div>
+        <div class="queue-item-meta">${formatTime(msg.timestamp)}</div>
+      `;
+      inboxList.appendChild(item);
+    });
+  } else {
+    inboxList.innerHTML = '<div class="queue-empty">No messages from Manager</div>';
+  }
+}
+
+async function sendDirectorCommand() {
+  const input = $('#directorCommandInput');
+  const command = input.value.trim();
+  if (!command) return;
+
+  input.value = '';
+  showToast('Sending to Manager...', 'info');
+
+  try {
+    const result = await api.sendCommand(command);
+    showToast(`Manager: ${result.flow || 'Task received'}`, 'success');
+    syncData();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function setManagerFlow(mode) {
+  try {
+    await api.setManagerFlow(mode);
+    showToast(`Manager flow set to ${mode}`, 'success');
+    syncData();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
 }
 
 // ============================================
@@ -624,6 +803,19 @@ function initEventListeners() {
   $('#commandSend').addEventListener('click', () => {
     sendCommand($('#commandInput').value, 'global');
   });
+
+  // Director command input (Manager view)
+  $('#directorCommandInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') sendDirectorCommand();
+  });
+
+  $('#directorCommandSend').addEventListener('click', () => {
+    sendDirectorCommand();
+  });
+
+  // Flow control buttons
+  $('#flowAuto').addEventListener('click', () => setManagerFlow('auto'));
+  $('#flowManual').addEventListener('click', () => setManagerFlow('manual'));
 
   // Command hints
   $$('.hint').forEach(hint => {
