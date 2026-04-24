@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>HAMH — Hermes Agent Management Hub</title>
+  <meta name="description" content="Centralized command center for managing Hermes AI agents. Task orchestration, real-time monitoring, and multi-platform deployment.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🎯%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+  <div id="app">
+    <!-- Mobile Header -->
+    <header class="mobile-header">
+      <div class="mobile-logo">
+        <span class="logo-icon">🎯</span>
+        <span class="logo-text">HAMH</span>
+      </div>
+      <button class="mobile-menu-toggle" id="mobileMenuToggle" aria-label="Toggle menu">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 12h18M3 6h18M3 18h18"/>
+        </svg>
+      </button>
+    </header>
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-brand">
+        <span class="logo-icon">🎯</span>
+        <div class="brand-text">
+          <span class="brand-name">HAMH</span>
+          <span class="brand-tagline">Agent Command Center</span>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <a href="#dashboard" class="nav-item active" data-view="dashboard">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          <span>Dashboard</span>
+        </a>
+        <a href="#agents" class="nav-item" data-view="agents">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <span>Agents</span>
+          <span class="nav-badge" id="agentCountBadge">3</span>
+        </a>
+        <a href="#tasks" class="nav-item" data-view="tasks">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          <span>Tasks</span>
+          <span class="nav-badge" id="taskCountBadge">0</span>
+        </a>
+        <a href="#settings" class="nav-item" data-view="settings">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <span>Settings</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="connection-status" id="connectionStatus">
+          <span class="status-dot"></span>
+          <span class="status-text">Connecting...</span>
+        </div>
+        <div class="sidebar-footer-brand">
+          Oddsify Labs
+        </div>
+      </div>
+    </aside>
+
+    <!-- Overlay for mobile sidebar -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Command Bar -->
+      <div class="command-bar">
+        <div class="command-input-wrapper">
+          <svg class="command-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <input type="text" id="commandInput" placeholder="Send a command... Try: @miah deploy code" autocomplete="off">
+          <button class="command-send" id="commandSend" aria-label="Send command">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </div>
+        <div class="command-hints" id="commandHints">
+          <span class="hint">@miah</span>
+          <span class="hint">@markus</span>
+          <span class="hint">@alexbet</span>
+          <span class="hint">status report</span>
+        </div>
+      </div>
+
+      <!-- Views -->
+      <div class="views-container">
+        <!-- Dashboard View -->
+        <section class="view active" id="view-dashboard">
+          <div class="view-header">
+            <h1>Dashboard</h1>
+            <p class="view-subtitle">Overview of your agent fleet</p>
+          </div>
+
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-icon agents">🤖</div>
+              <div class="stat-info">
+                <span class="stat-value" id="statAgents">3</span>
+                <span class="stat-label">Active Agents</span>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon tasks">📋</div>
+              <div class="stat-info">
+                <span class="stat-value" id="statTasks">0</span>
+                <span class="stat-label">Tasks Queued</span>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon completed">✅</div>
+              <div class="stat-info">
+                <span class="stat-value" id="statCompleted">0</span>
+                <span class="stat-label">Completed</span>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon uptime">⏱️</div>
+              <div class="stat-info">
+                <span class="stat-value" id="statUptime">0m</span>
+                <span class="stat-label">Uptime</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="dashboard-grid">
+            <div class="dashboard-main">
+              <div class="panel">
+                <div class="panel-header">
+                  <h3>Agent Status</h3>
+                  <a href="#agents" class="panel-link">View all →</a>
+                </div>
+                <div class="agent-list" id="dashboardAgentList">
+                  <!-- Populated by JS -->
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-header">
+                  <h3>Quick Actions</h3>
+                </div>
+                <div class="quick-actions">
+                  <button class="action-btn" data-cmd="@miah deploy code">
+                    <span class="action-icon">🚀</span>
+                    <span class="action-label">Deploy Code</span>
+                  </button>
+                  <button class="action-btn" data-cmd="@markus post update">
+                    <span class="action-icon">📣</span>
+                    <span class="action-label">Post Update</span>
+                  </button>
+                  <button class="action-btn" data-cmd="@alexbet scan all markets">
+                    <span class="action-icon">📊</span>
+                    <span class="action-label">Scan Markets</span>
+                  </button>
+                  <button class="action-btn" data-cmd="status report">
+                    <span class="action-icon">📈</span>
+                    <span class="action-label">Status Report</span>
+                  </button>
+                  <button class="action-btn" data-cmd="pause all">
+                    <span class="action-icon">⏸️</span>
+                    <span class="action-label">Pause All</span>
+                  </button>
+                  <button class="action-btn" data-cmd="resume all">
+                    <span class="action-icon">▶️</span>
+                    <span class="action-label">Resume All</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="dashboard-side">
+              <div class="panel">
+                <div class="panel-header">
+                  <h3>Activity Feed</h3>
+                  <button class="panel-refresh" id="refreshActivity" aria-label="Refresh">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                  </button>
+                </div>
+                <div class="activity-feed" id="activityFeed">
+                  <div class="activity-empty">No recent activity</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Agents View -->
+        <section class="view" id="view-agents">
+          <div class="view-header">
+            <h1>Agents</h1>
+            <p class="view-subtitle">Manage your Hermes agent fleet</p>
+          </div>
+
+          <div class="agents-grid" id="agentsGrid">
+            <!-- Populated by JS -->
+          </div>
+        </section>
+
+        <!-- Agent Detail View -->
+        <section class="view" id="view-agent-detail">
+          <div class="view-header">
+            <button class="back-btn" id="backToAgents">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+              Back to Agents
+            </button>
+            <h1 id="agentDetailName">Agent Name</h1>
+            <p class="view-subtitle" id="agentDetailSubtitle">Agent details and controls</p>
+          </div>
+
+          <div class="agent-detail-grid">
+            <div class="agent-detail-main">
+              <div class="panel">
+                <div class="panel-header">
+                  <h3>Overview</h3>
+                  <span class="status-badge" id="agentDetailStatus">Active</span>
+                </div>
+                <div class="agent-info-grid">
+                  <div class="info-item">
+                    <span class="info-label">Type</span>
+                    <span class="info-value" id="agentDetailType">VPS</span>
+                  </div>
+                  <div class="info-item">
+                    <span class="info-label">Transport</span>
+                    <span class="info-value" id="agentDetailTransport">SSH</span>
+                  </div>
+                  <div class="info-item">
+                    <span class="info-label">Queue Length</span>
+                    <span class="info-value" id="agentDetailQueue">0</span>
+                  </div>
+                  <div class="info-item">
+                    <span class="info-label">Endpoint</span>
+                    <span class="info-value info-mono" id="agentDetailEndpoint">—</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-header">
+                  <h3>Capabilities</h3>
+                </div>
+                <div class="capabilities-list" id="agentDetailCapabilities">
+                  <!-- Populated by JS -->
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-header">
+                  <h3>Send Command</h3>
+                </div>
+                <div class="agent-command-form">
+                  <input type="text" id="agentCommandInput" placeholder="Enter command for this agent...">
+                  <button class="btn btn-primary" id="agentCommandSend">Send</button>
+                </div>
+                <div class="command-templates" id="agentCommandTemplates">
+                  <!-- Populated by JS -->
+                </div>
+              </div>
+            </div>
+
+            <div class="agent-detail-side">
+              <div class="panel">
+                <div class="panel-header">
+                  <h3>Task Queue</h3>
+                </div>
+                <div class="task-queue-list" id="agentTaskQueue">
+                  <div class="queue-empty">No tasks in queue</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Tasks View -->
+        <section class="view" id="view-tasks">
+          <div class="view-header">
+            <h1>Tasks</h1>
+            <p class="view-subtitle">Task board and queue management</p>
+          </div>
+
+          <div class="tasks-toolbar">
+            <div class="task-filters">
+              <button class="filter-btn active" data-filter="all">All</button>
+              <button class="filter-btn" data-filter="queued">Queued</button>
+              <button class="filter-btn" data-filter="running">Running</button>
+              <button class="filter-btn" data-filter="completed">Completed</button>
+              <button class="filter-btn" data-filter="failed">Failed</button>
+            </div>
+            <button class="btn btn-primary" id="createTaskBtn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              New Task
+            </button>
+          </div>
+
+          <div class="task-board" id="taskBoard">
+            <div class="task-column" data-status="queued">
+              <div class="column-header">
+                <span class="column-dot queued"></span>
+                <span class="column-title">Queued</span>
+                <span class="column-count" id="countQueued">0</span>
+              </div>
+              <div class="column-tasks" id="tasksQueued"></div>
+            </div>
+            <div class="task-column" data-status="running">
+              <div class="column-header">
+                <span class="column-dot running"></span>
+                <span class="column-title">Running</span>
+                <span class="column-count" id="countRunning">0</span>
+              </div>
+              <div class="column-tasks" id="tasksRunning"></div>
+            </div>
+            <div class="task-column" data-status="completed">
+              <div class="column-header">
+                <span class="column-dot completed"></span>
+                <span class="column-title">Completed</span>
+                <span class="column-count" id="countCompleted">0</span>
+              </div>
+              <div class="column-tasks" id="tasksCompleted"></div>
+            </div>
+            <div class="task-column" data-status="failed">
+              <div class="column-header">
+                <span class="column-dot failed"></span>
+                <span class="column-title">Failed</span>
+                <span class="column-count" id="countFailed">0</span>
+              </div>
+              <div class="column-tasks" id="tasksFailed"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Settings View -->
+        <section class="view" id="view-settings">
+          <div class="view-header">
+            <h1>Settings</h1>
+            <p class="view-subtitle">Configure your HAMH instance</p>
+          </div>
+
+          <div class="settings-grid">
+            <div class="settings-card">
+              <h3>Server Configuration</h3>
+              <div class="setting-item">
+                <label>Server Port</label>
+                <input type="text" value="3000" disabled>
+              </div>
+              <div class="setting-item">
+                <label>Environment</label>
+                <input type="text" value="Production" disabled>
+              </div>
+              <div class="setting-item">
+                <label>API Base URL</label>
+                <input type="text" id="settingsApiUrl" value="http://localhost:3000">
+              </div>
+              <div class="setting-item">
+                <label>Polling Interval (ms)</label>
+                <input type="number" id="settingsPollInterval" value="3000" min="1000" max="30000" step="500">
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <h3>Agent Configuration</h3>
+              <div class="setting-agent" id="settingsAgentList">
+                <!-- Populated by JS -->
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <h3>Appearance</h3>
+              <div class="setting-item">
+                <label>Theme</label>
+                <div class="theme-options">
+                  <button class="theme-btn active" data-theme="dark">🌙 Dark</button>
+                  <button class="theme-btn" data-theme="light">☀️ Light</button>
+                </div>
+              </div>
+              <div class="setting-item">
+                <label>Compact Mode</label>
+                <label class="toggle">
+                  <input type="checkbox" id="compactModeToggle">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <h3>System</h3>
+              <div class="setting-item">
+                <label>Version</label>
+                <span class="setting-value">v1.0.0</span>
+              </div>
+              <div class="setting-item">
+                <label>Uptime</label>
+                <span class="setting-value" id="settingsUptime">0m</span>
+              </div>
+              <div class="setting-item">
+                <button class="btn btn-danger" id="clearActivityBtn">Clear Activity Log</button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <!-- Create Task Modal -->
+    <div class="modal" id="createTaskModal">
+      <div class="modal-backdrop"></div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Create New Task</h3>
+          <button class="modal-close" aria-label="Close">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Agent</label>
+            <select id="taskAgentSelect">
+              <option value="miah">Miah Hermes (VPS)</option>
+              <option value="markus">Markus Bot (Local)</option>
+              <option value="alexbet">Alexbet Sharp (Railway)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Task Description</label>
+            <input type="text" id="taskDescriptionInput" placeholder="e.g., deploy latest code">
+          </div>
+          <div class="form-group">
+            <label>Task Type</label>
+            <select id="taskTypeSelect">
+              <option value="custom">Custom</option>
+              <option value="deploy">Deploy</option>
+              <option value="write-code">Write Code</option>
+              <option value="debug">Debug</option>
+              <option value="post-x">Post to X</option>
+              <option value="scan-markets">Scan Markets</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary modal-cancel">Cancel</button>
+          <button class="btn btn-primary" id="taskCreateConfirm">Create Task</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+  </div>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>
