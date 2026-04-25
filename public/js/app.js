@@ -418,6 +418,7 @@ function updateDashboard() {
 
   // Update badges
   $('#taskCountBadge').textContent = totalQueued;
+  $('#agentCountBadge').textContent = Object.keys(state.workers).length;
 
   // Update octavia badge with pending items
   const octaviaPending = (state.octavia?.pendingApprovals || 0) + (state.octavia?.agentReports || 0) + (state.octavia?.directorInbox || 0);
@@ -490,6 +491,24 @@ function updateManagerView() {
     });
   } else {
     reportsList.innerHTML = '<div class="queue-empty">No agent reports</div>';
+  }
+
+  // Managed Agents
+  const managedList = $('#managedAgentsList');
+  managedList.innerHTML = '';
+  Object.entries(AGENTS).forEach(([id, agent]) => {
+    if (id === 'octavia' || !agent.reportsTo) return;
+    const worker = state.workers[id] || {};
+    const item = document.createElement('div');
+    item.className = 'queue-item';
+    item.innerHTML = `
+      <div class="queue-item-title">${agent.icon} ${agent.name}</div>
+      <div class="queue-item-meta">${agent.type.toUpperCase()} · ${worker.status === 'active' ? '🟢 Online' : '⛔ Offline'} · ${worker.queueLength || 0} queued</div>
+    `;
+    managedList.appendChild(item);
+  });
+  if (managedList.children.length === 0) {
+    managedList.innerHTML = '<div class="queue-empty">No agents configured</div>';
   }
 
   // Director Inbox

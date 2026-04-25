@@ -878,6 +878,11 @@ body {
   color: var(--warning);
 }
 
+.agent-card-type.director-facing {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
 .agent-card-body {
   display: flex;
   flex-direction: column;
