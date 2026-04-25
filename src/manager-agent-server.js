@@ -494,26 +494,29 @@ app.post('/command', async (req, res) => {
       return res.json({ type: parsed.type, status: 'acknowledged' });
     }
 
-    // Director speaking to Manager
+    // Director speaking to Octavia
     if (parsed.type === 'manager-directive') {
       const taskTemplate = CommandParser.getTaskTemplate('octavia', parsed.description);
       const task = taskQueue.enqueueTask('octavia', taskTemplate, { source: 'director' });
-      
+
+      // Auto-acknowledge to Director Inbox
+      taskQueue.directorMessage(`Acknowledged: "${parsed.description}". Task queued for processing.`);
+
       // In auto mode, manager auto-approves and delegates
       if (taskQueue.managerFlowControl.mode === 'auto') {
         taskQueue.approveTask(task.id);
-        
+
         // Simple auto-delegation: if directive mentions an agent, delegate there
-        const targetAgent = ['miah', 'markus', 'alexbet'].find(id => 
+        const targetAgent = ['miah', 'markus', 'alexbet'].find(id =>
           parsed.description.toLowerCase().includes(id)
         );
-        
+
         if (targetAgent) {
           const delegated = taskQueue.delegateTask(task.id, targetAgent, {
             description: parsed.description,
             directive: 'Auto-delegated from Director via Manager'
           });
-          
+
           // Execute the delegated task
           const execution = await TaskExecutor.execute(delegated);
           if (execution.success) {
@@ -521,43 +524,49 @@ app.post('/command', async (req, res) => {
           } else {
             taskQueue.failTask(targetAgent, delegated.id, execution.error);
           }
-          
+
+          // Notify Director of delegation
+          taskQueue.directorMessage(`Delegated to ${WORKERS[targetAgent]?.name || targetAgent}: ${parsed.description}`);
+
           return res.json({
             status: 'success',
-            flow: 'director → manager → agent',
+            flow: 'director → octavia → agent',
             managerTask: task,
             delegatedTask: delegated,
             result: execution.result || execution.error
           });
         }
       }
-      
+
       return res.json({
         status: 'success',
-        flow: 'director → manager',
+        flow: 'director → octavia',
         task,
         mode: taskQueue.managerFlowControl.mode,
-        message: taskQueue.managerFlowControl.mode === 'manual' 
-          ? 'Task queued for manager approval'
-          : 'Task approved and processed by manager'
+        message: taskQueue.managerFlowControl.mode === 'manual'
+          ? 'Task queued for Octavia approval'
+          : 'Task acknowledged by Octavia'
       });
     }
 
-    // Agent submitting task to Manager
+    // Agent submitting task to Octavia
     if (parsed.type === 'agent-to-manager') {
       const { agentId, description } = parsed;
-      
+
       const task = taskQueue.enqueueTask('octavia', {
         description: `From ${WORKERS[agentId]?.name || agentId}: ${description}`,
         type: 'agent-request',
         requestingAgent: agentId
       }, { source: 'agent' });
-      
+
+      // Notify Director that an agent submitted something to Octavia
+      taskQueue.directorMessage(`🔔 ${WORKERS[agentId]?.name || agentId} submitted a request: "${description}"`);
+
       return res.json({
         status: 'success',
-        flow: 'agent → manager',
+        flow: 'agent → octavia',
         task,
-        message: 'Request submitted to Manager'
+        message: 'Request submitted to Octavia'
       });
     }
 

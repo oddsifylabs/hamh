@@ -241,15 +241,11 @@ function updateConnectionStatus() {
 // DATA SYNC
 // ============================================
 async function syncData() {
-  if (!state.connected) {
-    await checkConnection();
-    if (!state.connected) return;
-  }
-
   try {
-    const [statusData, activityData] = await Promise.all([
+    const [statusData, activityData, octaviaData] = await Promise.all([
       api.status(),
       api.getActivity(30),
+      api.octaviaStatus().catch(() => ({})),
     ]);
 
     // Update workers
@@ -267,8 +263,10 @@ async function syncData() {
       state.activityLog = activityData.log;
     }
 
-    // Update octavia state if present
-    if (statusData.octavia) {
+    // Update octavia state from dedicated endpoint
+    if (octaviaData.octavia) {
+      state.octavia = octaviaData.octavia;
+    } else if (statusData.octavia) {
       state.octavia = statusData.octavia;
     }
 
