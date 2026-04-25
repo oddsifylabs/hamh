@@ -271,7 +271,7 @@ class TaskQueue {
     task.result = result;
     
     this.completedTasks.push(task);
-    this.logActivity(`✓ Completed: ${task.description}`);
+    this.logActivity(`✓ Completed [${workerId}]: ${task.description}`);
     this.save();
     
     // If completed by a worker reporting to manager, notify manager
@@ -299,7 +299,7 @@ class TaskQueue {
     task.error = error;
     
     this.completedTasks.push(task);
-    this.logActivity(`✗ Failed: ${task.description} - ${error}`);
+    this.logActivity(`✗ Failed [${workerId}]: ${task.description} - ${error}`);
     this.save();
     
     // If failed by a worker reporting to manager, notify manager

@@ -291,19 +291,27 @@ async function syncData() {
     // For now, activity log drives completed count
     state.tasks.completed = state.activityLog
       .filter(a => a.message && a.message.includes('Completed'))
-      .map(a => ({
-        description: a.message.replace('✓ Completed: ', ''),
-        status: 'completed',
-        timestamp: a.timestamp,
-      }));
+      .map(a => {
+        const agentMatch = a.message.match(/\[([\w-]+)\]:/);
+        return {
+          description: a.message.replace(/✓ Completed \[[\w-]+\]: /, ''),
+          agentId: agentMatch ? agentMatch[1] : null,
+          status: 'completed',
+          timestamp: a.timestamp,
+        };
+      });
 
     state.tasks.failed = state.activityLog
       .filter(a => a.message && a.message.includes('Failed'))
-      .map(a => ({
-        description: a.message.replace('✗ Failed: ', '').split(' - ')[0],
-        status: 'failed',
-        timestamp: a.timestamp,
-      }));
+      .map(a => {
+        const agentMatch = a.message.match(/\[([\w-]+)\]:/);
+        return {
+          description: a.message.replace(/✗ Failed \[[\w-]+\]: /, '').split(' - ')[0],
+          agentId: agentMatch ? agentMatch[1] : null,
+          status: 'failed',
+          timestamp: a.timestamp,
+        };
+      });
 
     updateDashboard();
     updateAgentsView();
