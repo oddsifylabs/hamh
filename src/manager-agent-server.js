@@ -89,9 +89,9 @@ const WORKERS = {
   markus: {
     name: 'Markus Bot',
     type: 'local',
-    transport: 'http',
-    host: null,
-    baseUrl: process.env.MARKUS_API || 'http://localhost:3001',
+    transport: 'telegram',
+    botToken: process.env.TELEGRAM_BOT_TOKEN,
+    chatId: process.env.MARKUS_CHAT_ID,
     capabilities: ['post-x', 'curate-content', 'engagement', 'analytics', 'schedule'],
     reportsTo: 'octavia'
   },
@@ -449,6 +449,8 @@ class TaskExecutor {
         result = await this.executeSsh(task, worker);
       } else if (worker.transport === 'http') {
         result = await this.executeHttp(task, worker);
+      } else if (worker.transport === 'telegram') {
+        result = await this.executeTelegram(task, worker);
       } else {
         throw new Error(`Unknown transport: ${worker.transport}`);
       }
@@ -512,6 +514,48 @@ class TaskExecutor {
       };
     } catch (error) {
       throw new Error(`HTTP execution failed: ${error.message}`);
+    }
+  }
+
+  static async executeTelegram(task, worker) {
+    try {
+      if (!worker.botToken || !worker.chatId) {
+        throw new Error('Telegram bot token or chat ID not configured');
+      }
+
+      const text = `🚀 *HAMH Task for Markus*
+
+*Task ID:* \`${task.id}\`
+*Type:* ${task.type}
+*From:* ${task.source || 'Director'}
+
+${task.description}
+
+_Reply with \`/done ${task.id}\` when complete._
+      `.trim();
+
+      const response = await axios.post(
+        `https://api.telegram.org/bot${worker.botToken}/sendMessage`,
+        {
+          chat_id: worker.chatId,
+          text: text,
+          parse_mode: 'Markdown',
+          disable_web_page_preview: true
+        },
+        { timeout: 15000 }
+      );
+
+      if (!response.data.ok) {
+        throw new Error(response.data.description || 'Telegram API error');
+      }
+
+      return {
+        status: 'success',
+        telegramMessageId: response.data.result.message_id,
+        sentTo: worker.chatId
+      };
+    } catch (error) {
+      throw new Error(`Telegram delivery failed: ${error.message}`);
     }
   }
 }
