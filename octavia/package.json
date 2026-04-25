@@ -1,15 +1,19 @@
 {
-  "name": "octavia-hermes",
+  "name": "@oddsifylabs/octavia-daemon",
   "version": "1.0.0",
-  "description": "Octavia Hermes - Manager Agent Telegram Interface. Forwards @mentions to HAMH.",
-  "main": "octavia-bot.js",
+  "description": "Octavia Hermes - Autonomous Manager Agent Daemon for HAMH",
+  "main": "octavia-daemon.js",
   "scripts": {
-    "start": "node octavia-bot.js",
-    "dev": "node octavia-bot.js"
+    "start": "node octavia-daemon.js",
+    "dev": "node octavia-daemon.js"
   },
-  "keywords": ["oddsify-labs", "hermes-agent", "telegram-bot", "manager"],
+  "keywords": ["octavia", "hamh", "oddsifylabs", "ai-agent", "daemon"],
   "author": "Oddsify Labs",
   "license": "MIT",
-  "engines": { "node": ">=18.0.0" },
-  "dependencies": { "axios": "^1.6.0", "dotenv": "^16.3.1" }
+  "dependencies": {
+    "axios": "^1.7.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
 }

@@ -65,13 +65,28 @@ Same as Mitch:
 
 ## How to Task Any Worker
 
-From HAMH dashboard, Telegram, or API:
+From **HAMH CLI**, **web dashboard**, or **API**:
 
+```bash
+# CLI
+hamh send "@markus post-x New product launch tomorrow"
+hamh send "@miah deploy oddsifylabs.com"
+hamh send "@mitch lead-gen Find AI agencies in Arizona"
+hamh send "@ruth build Landing page for ebook store"
 ```
-@markus post-x New product launch tomorrow
-@miah deploy oddsifylabs.com
-@mitch lead-gen Find AI agencies in Arizona
-@ruth build Landing page for ebook store
+
+Or POST to `/command` with `X-API-Key` header.
+
+---
+
+## CLI Tool
+
+```bash
+cd cli
+npm install -g .
+hamh config --set url https://hamh.oddsifylabs.com
+hamh config --set key YOUR_API_KEY
+hamh status
 ```
 
 ---

@@ -1,55 +1,63 @@
-# Octavia Hermes - Manager Agent Telegram Interface
+# Octavia Daemon
 
-Octavia is the bridge between Jesse (Director) and the worker fleet. She runs as a Telegram bot, receives commands via DM, and forwards `@mention` tasks to HAMH.
+Octavia Hermes - Autonomous Manager Agent for HAMH.
 
-## What She Does
+No Telegram. No chat interface. Pure autonomous daemon.
 
-1. **Receives your Telegram DMs**
-2. **Detects `@markus`, `@miah`, `@mitch`, `@ruth`** → forwards to HAMH `/command`
-3. **Handles shortcuts:** `status report`, `pause all`, `resume all`
-4. **Replies with confirmation** from HAMH
+## What Octavia Does
 
-## Deploy to Railway (under HAMH project)
-
-```bash
-# 1. In Railway dashboard, create new service from GitHub repo
-#    Point to oddsifylabs/hamh, directory: /octavia
-
-# 2. Set environment variables in Railway:
-TELEGRAM_BOT_TOKEN=8560490088:AAFaK5lin7ycVvB1NNxABatB7FrwTmkN50A
-JESSE_CHAT_ID=8502906149
-HAMH_BASE_URL=http://hamh.railway.internal:3000
-POLL_INTERVAL_MS=3000
-
-# 3. Deploy
-# Railway will auto-build from package.json
-```
-
-## Important: Stop Old Octavia First
-
-Before deploying this new Octavia, **stop or delete** the old Octavia service (`hermes-agent-production-4a66`) so there's no Telegram token conflict.
-
-## Architecture
-
-```
-You ──DM──► @OctaviaHermesBot (this service)
-              │
-              ├── @markus post-x hello ──► HAMH /command
-              │                                │
-              │                                ▼
-              │                         Queues for Markus
-              │                                │
-              │                                ▼
-              │                         Worker polls + executes
-              │                                │
-              └──◄──────────── HAMH notifies you via Telegram
-```
+- **Polls HAMH** for tasks in the `octavia` queue
+- **Auto-delegates** Director commands to workers (`@miah`, `@markus`, `@mitch`, `@ruth`)
+- **Flow control** handles `pause all` / `resume all`
+- **Status reports** on demand or on schedule
+- **Health checks** HAMH every 60s
+- **Auto-reports** fleet status to Director inbox every hour
+- **Escalates** blockers and failures to Director inbox
 
 ## Environment Variables
 
-| Variable | Required | Description |
-|---|---|---|
-| `TELEGRAM_BOT_TOKEN` | Yes | Octavia's bot token |
-| `JESSE_CHAT_ID` | Yes | Your Telegram user ID |
-| `HAMH_BASE_URL` | Yes | HAMH URL (private or public) |
-| `POLL_INTERVAL_MS` | No | Telegram poll interval (default: 3000ms) |
+```bash
+HAMH_BASE_URL=http://hamh.railway.internal:3000   # Internal URL when in same Railway project
+API_KEY=your_api_key_here                         # Same API key as HAMH
+POLL_INTERVAL_MS=5000                             # How often to check for tasks
+HEALTH_CHECK_INTERVAL_MS=60000                    # HAMH health check frequency
+AUTO_REPORT_INTERVAL_MS=3600000                   # Hourly auto-report
+```
+
+## Deployment
+
+### Railway (same project as HAMH)
+
+1. Add as a new service in the same Railway project
+2. Set `HAMH_BASE_URL=http://hamh.railway.internal:3000`
+3. Set `API_KEY` to match HAMH's API_KEY
+4. Deploy
+
+### Local / VPS
+
+```bash
+cd octavia
+npm install
+HAMH_BASE_URL=http://localhost:3000 API_KEY=xxx node octavia-daemon.js
+```
+
+## Running as a Systemd Service
+
+```ini
+[Unit]
+Description=Octavia Daemon
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/octavia
+ExecStart=/usr/bin/node octavia-daemon.js
+Restart=always
+RestartSec=10
+Environment=HAMH_BASE_URL=http://localhost:3000
+Environment=API_KEY=your_key_here
+
+[Install]
+WantedBy=multi-user.target
+```
