@@ -4,7 +4,7 @@
  * 
  * Responsibilities:
  * - Receive commands from CEO dashboard
- * - Parse @mentions to route tasks (@miah, @markus, @alexbet)
+ * - Parse @mentions to route tasks (@miah, @markus, @mitch, @ruth)
  * - Manage task queues for each worker
  * - Execute tasks via appropriate transport (SSH, HTTP, etc)
  * - Report status back to dashboard
@@ -59,6 +59,35 @@ function saveState(state) {
 }
 
 // ============================================
+// TELEGRAM NOTIFICATIONS
+// ============================================
+
+async function notifyDirector(message) {
+  const botToken = process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = process.env.JESSE_CHAT_ID;
+
+  if (!botToken || !chatId) {
+    console.log('[Notify] Telegram not configured:', message);
+    return;
+  }
+
+  try {
+    await axios.post(
+      `https://api.telegram.org/bot${botToken}/sendMessage`,
+      {
+        chat_id: chatId,
+        text: message,
+        parse_mode: 'Markdown',
+        disable_web_page_preview: true
+      },
+      { timeout: 15000 }
+    );
+  } catch (error) {
+    console.error('[Notify] Failed to send Telegram message:', error.message);
+  }
+}
+
+// ============================================
 // CONFIGURATION
 // ============================================
 
@@ -78,30 +107,37 @@ const WORKERS = {
   miah: {
     name: 'Miah Hermes',
     type: 'vps',
-    transport: 'ssh',
-    host: process.env.MIAH_HOST || 'your-vps-ip',
-    user: process.env.MIAH_USER || 'root',
-    privateKey: process.env.MIAH_KEY_PATH || '/home/manager/.ssh/miah_key',
+    transport: 'poll',
+    host: process.env.MIAH_HOST || null,
     baseUrl: null,
     capabilities: ['write-code', 'deploy', 'debug', 'code-review', 'automation'],
     reportsTo: 'octavia'
   },
   markus: {
-    name: 'Markus Bot',
+    name: 'Markus Hermes',
     type: 'local',
-    transport: 'telegram',
-    botToken: process.env.TELEGRAM_BOT_TOKEN,
-    chatId: process.env.MARKUS_CHAT_ID,
+    transport: 'poll',
+    host: null,
+    baseUrl: null,
     capabilities: ['post-x', 'curate-content', 'engagement', 'analytics', 'schedule'],
     reportsTo: 'octavia'
   },
-  alexbet: {
-    name: 'Alexbet Sharp V2',
+  mitch: {
+    name: 'Mitch Hermes',
     type: 'railway',
-    transport: 'http',
-    baseUrl: process.env.ALEXBET_API || 'https://alexbet-sharp.railway.app',
-    apiKey: process.env.ALEXBET_KEY,
-    capabilities: ['scan-markets', 'kelly-sizing', 'edge-detection', 'alerts', 'pnl-tracking'],
+    transport: 'poll',
+    host: null,
+    baseUrl: null,
+    capabilities: ['sales', 'marketing', 'lead-generation', 'content-strategy', 'analytics', 'crm'],
+    reportsTo: 'octavia'
+  },
+  ruth: {
+    name: 'Ruth Hermes',
+    type: 'railway',
+    transport: 'poll',
+    host: null,
+    baseUrl: null,
+    capabilities: ['web-development', 'frontend', 'backend', 'ui-ux', 'deployment', 'maintenance'],
     reportsTo: 'octavia'
   }
 };
@@ -116,7 +152,8 @@ class TaskQueue {
       octavia: [],
       miah: [],
       markus: [],
-      alexbet: []
+      mitch: [],
+      ruth: []
     };
     this.completedTasks = [];
     this.activityLog = [];
@@ -380,7 +417,7 @@ class CommandParser {
     }
 
     // Agent submitting task to Octavia (Manager)
-    const agentToManagerMatch = trimmed.match(/^@octavia\s+from\s+@(miah|markus|alexbet)\s*:\s*(.+)$/i);
+    const agentToManagerMatch = trimmed.match(/^@octavia\s+from\s+@(miah|markus|mitch|ruth)\s*:\s*(.+)$/i);
     if (agentToManagerMatch) {
       return {
         type: 'agent-to-manager',
@@ -389,7 +426,7 @@ class CommandParser {
       };
     }
 
-    const mentionMatch = trimmed.match(/^@(miah|markus|alexbet|octavia)\s+(.+)$/i);
+    const mentionMatch = trimmed.match(/^@(miah|markus|mitch|ruth|octavia)\s+(.+)$/i);
     if (mentionMatch) {
       const [_, workerId, taskDesc] = mentionMatch;
       return {
@@ -421,10 +458,17 @@ class CommandParser {
         'engage': { description: `Engagement: ${description}`, type: 'engagement' },
         'analytics': { description: `Analytics: ${description}`, type: 'analytics' }
       },
-      alexbet: {
-        'scan': { description: `Scan markets: ${description}`, type: 'scan-markets' },
-        'kelly': { description: `Kelly sizing: ${description}`, type: 'kelly-sizing' },
-        'alert': { description: `Alert: ${description}`, type: 'alerts' }
+      mitch: {
+        'lead': { description: `Lead gen: ${description}`, type: 'lead-generation' },
+        'sales': { description: `Sales task: ${description}`, type: 'sales' },
+        'marketing': { description: `Marketing: ${description}`, type: 'marketing' },
+        'crm': { description: `CRM: ${description}`, type: 'crm' }
+      },
+      ruth: {
+        'build': { description: `Build: ${description}`, type: 'web-development' },
+        'fix': { description: `Fix: ${description}`, type: 'maintenance' },
+        'deploy': { description: `Deploy: ${description}`, type: 'deployment' },
+        'ui': { description: `UI/UX: ${description}`, type: 'ui-ux' }
       }
     };
 
@@ -589,7 +633,8 @@ app.post('/command', async (req, res) => {
           octavia: taskQueue.getQueue('octavia'),
           miah: taskQueue.getQueue('miah'),
           markus: taskQueue.getQueue('markus'),
-          alexbet: taskQueue.getQueue('alexbet')
+          mitch: taskQueue.getQueue('mitch'),
+          ruth: taskQueue.getQueue('ruth')
         },
         manager: taskQueue.getManagerStatus(),
         timestamp: new Date()
@@ -614,7 +659,7 @@ app.post('/command', async (req, res) => {
         taskQueue.approveTask(task.id);
 
         // Simple auto-delegation: if directive mentions an agent, delegate there
-        const targetAgent = ['miah', 'markus', 'alexbet'].find(id =>
+        const targetAgent = ['miah', 'markus', 'mitch', 'ruth'].find(id =>
           parsed.description.toLowerCase().includes(id)
         );
 
@@ -687,6 +732,17 @@ app.post('/command', async (req, res) => {
       const taskTemplate = CommandParser.getTaskTemplate(workerId, description);
       const task = taskQueue.enqueueTask(workerId, taskTemplate, { source });
 
+      // Polling workers pick up tasks themselves — do not auto-execute
+      if (WORKERS[workerId].transport === 'poll') {
+        const msg = `📋 *Task Queued*\n\n*Agent:* ${WORKERS[workerId].name}\n*Task:* ${task.description}\n*ID:* \`${task.id}\``;
+        notifyDirector(msg);
+        return res.json({
+          status: 'queued',
+          task,
+          message: `Task queued for ${WORKERS[workerId].name}. Worker will poll and pick it up.`
+        });
+      }
+
       const execution = await TaskExecutor.execute(task);
 
       if (execution.success) {
@@ -737,12 +793,19 @@ app.get('/status', (req, res) => {
         queueLength: taskQueue.getQueue('markus').length,
         currentTask: taskQueue.getCurrentTask('markus')
       },
-      alexbet: {
-        name: WORKERS.alexbet.name,
-        type: WORKERS.alexbet.type,
+      mitch: {
+        name: WORKERS.mitch.name,
+        type: WORKERS.mitch.type,
         status: 'active',
-        queueLength: taskQueue.getQueue('alexbet').length,
-        currentTask: taskQueue.getCurrentTask('alexbet')
+        queueLength: taskQueue.getQueue('mitch').length,
+        currentTask: taskQueue.getCurrentTask('mitch')
+      },
+      ruth: {
+        name: WORKERS.ruth.name,
+        type: WORKERS.ruth.type,
+        status: 'active',
+        queueLength: taskQueue.getQueue('ruth').length,
+        currentTask: taskQueue.getCurrentTask('ruth')
       }
     },
     activityLog: taskQueue.getActivityLog(20)
@@ -763,40 +826,6 @@ app.get('/queue/:workerId', (req, res) => {
   });
 });
 
-app.post('/task/:taskId/complete', (req, res) => {
-  const { taskId } = req.params;
-  const { workerId, result } = req.body;
-
-  if (!workerId || !WORKERS[workerId]) {
-    return res.status(400).json({ error: 'Invalid worker' });
-  }
-
-  const task = taskQueue.completeTask(workerId, taskId, result);
-
-  if (!task) {
-    return res.status(404).json({ error: 'Task not found' });
-  }
-
-  res.json({ status: 'completed', task });
-});
-
-app.post('/task/:taskId/fail', (req, res) => {
-  const { taskId } = req.params;
-  const { workerId, error } = req.body;
-
-  if (!workerId || !WORKERS[workerId]) {
-    return res.status(400).json({ error: 'Invalid worker' });
-  }
-
-  const task = taskQueue.failTask(workerId, taskId, error);
-
-  if (!task) {
-    return res.status(404).json({ error: 'Task not found' });
-  }
-
-  res.json({ status: 'failed', task });
-});
-
 app.get('/activity', (req, res) => {
   const limit = req.query.limit || 50;
   res.json({ log: taskQueue.getActivityLog(limit) });
@@ -808,7 +837,8 @@ app.post('/legacy/task', (req, res) => {
   const legacyMap = {
     'coder': 'miah',
     'social': 'markus',
-    'betting': 'alexbet'
+    'sales': 'mitch',
+    'web': 'ruth'
   };
 
   const workerId = legacyMap[agentId];
@@ -832,7 +862,8 @@ app.get('/legacy/status/:agentId', (req, res) => {
   const legacyMap = {
     'coder': 'miah',
     'social': 'markus',
-    'betting': 'alexbet'
+    'sales': 'mitch',
+    'web': 'ruth'
   };
 
   const workerId = legacyMap[agentId];
@@ -848,6 +879,85 @@ app.get('/legacy/status/:agentId', (req, res) => {
     queueLength: queue.length,
     tasks: queue.slice(0, 5)
   });
+});
+
+// ============================================
+// POLLING WORKER API
+// ============================================
+
+// Workers poll this endpoint to get their next task
+app.get('/api/tasks/poll', (req, res) => {
+  const { agent } = req.query;
+
+  if (!agent || !WORKERS[agent]) {
+    return res.status(400).json({ error: 'Valid agent query param required' });
+  }
+
+  const queue = taskQueue.queues[agent];
+  const pendingTask = queue.find(t => t.status === 'queued');
+
+  if (!pendingTask) {
+    return res.status(204).send();
+  }
+
+  // Mark as in-progress so it's not picked up again
+  pendingTask.status = 'in-progress';
+  pendingTask.startedAt = new Date();
+  taskQueue.save();
+
+  res.json({
+    task: {
+      id: pendingTask.id,
+      workerId: pendingTask.workerId,
+      description: pendingTask.description,
+      type: pendingTask.type,
+      source: pendingTask.source,
+      createdAt: pendingTask.createdAt,
+      parameters: pendingTask.parameters || {}
+    }
+  });
+});
+
+// Workers submit results back here
+app.post('/api/tasks/:taskId/complete', (req, res) => {
+  const { taskId } = req.params;
+  const { workerId, result } = req.body;
+
+  if (!workerId || !WORKERS[workerId]) {
+    return res.status(400).json({ error: 'Invalid worker' });
+  }
+
+  const task = taskQueue.completeTask(workerId, taskId, result);
+
+  if (!task) {
+    return res.status(404).json({ error: 'Task not found' });
+  }
+
+  const msg = `✅ *Task Complete*\n\n*Agent:* ${WORKERS[workerId].name}\n*Task:* ${task.description}\n*Result:* ${typeof result === 'string' ? result : JSON.stringify(result).slice(0, 200)}`;
+  notifyDirector(msg);
+
+  res.json({ status: 'completed', task });
+});
+
+// Workers report failures here
+app.post('/api/tasks/:taskId/fail', (req, res) => {
+  const { taskId } = req.params;
+  const { workerId, error } = req.body;
+
+  if (!workerId || !WORKERS[workerId]) {
+    return res.status(400).json({ error: 'Invalid worker' });
+  }
+
+  const task = taskQueue.failTask(workerId, taskId, error);
+
+  if (!task) {
+    return res.status(404).json({ error: 'Task not found' });
+  }
+
+  const msg = `❌ *Task Failed*\n\n*Agent:* ${WORKERS[workerId].name}\n*Task:* ${task.description}\n*Error:* ${error}`;
+  notifyDirector(msg);
+
+  res.json({ status: 'failed', task });
 });
 
 app.get('/health', (req, res) => {
@@ -907,7 +1017,19 @@ app.post('/octavia/delegate', async (req, res) => {
       return res.status(404).json({ error: 'Manager task not found' });
     }
 
-    // Execute if in auto mode
+    // Polling workers pick up tasks themselves — do not auto-execute
+    if (WORKERS[targetWorkerId].transport === 'poll') {
+      const msg = `📋 *Task Delegated*\n\n*Manager:* Octavia → *Agent:* ${WORKERS[targetWorkerId].name}\n*Task:* ${delegated.description}\n*ID:* \`${delegated.id}\``;
+      notifyDirector(msg);
+      return res.json({
+        status: 'success',
+        flow: 'manager → agent (poll)',
+        delegatedTask: delegated,
+        message: 'Task delegated. Worker will poll and pick it up.'
+      });
+    }
+
+    // Execute if in auto mode for non-polling workers
     const execution = await TaskExecutor.execute(delegated);
     if (execution.success) {
       taskQueue.completeTask(targetWorkerId, delegated.id, execution.result);
