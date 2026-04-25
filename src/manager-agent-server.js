@@ -16,12 +16,47 @@ const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
 const NodeSSH = require('node-ssh');
 const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
 require('dotenv').config();
 
 const app = express();
 app.use(express.json());
 app.use(cors());
 app.use(express.static('public'));
+
+// ============================================
+// PERSISTENCE
+// ============================================
+const DATA_DIR = path.join(__dirname, '..', 'data');
+const STATE_FILE = path.join(DATA_DIR, 'state.json');
+
+function ensureDataDir() {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+}
+
+function loadState() {
+  try {
+    if (fs.existsSync(STATE_FILE)) {
+      const raw = fs.readFileSync(STATE_FILE, 'utf8');
+      return JSON.parse(raw);
+    }
+  } catch (err) {
+    console.error('Failed to load state:', err.message);
+  }
+  return null;
+}
+
+function saveState(state) {
+  try {
+    ensureDataDir();
+    fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+  } catch (err) {
+    console.error('Failed to save state:', err.message);
+  }
+}
 
 // ============================================
 // CONFIGURATION
@@ -91,6 +126,27 @@ class TaskQueue {
       agentReports: [],
       directorInbox: []
     };
+    this.load();
+  }
+
+  load() {
+    const saved = loadState();
+    if (saved) {
+      if (saved.queues) this.queues = saved.queues;
+      if (saved.completedTasks) this.completedTasks = saved.completedTasks;
+      if (saved.activityLog) this.activityLog = saved.activityLog;
+      if (saved.managerFlowControl) this.managerFlowControl = saved.managerFlowControl;
+      console.log('State loaded from disk');
+    }
+  }
+
+  save() {
+    saveState({
+      queues: this.queues,
+      completedTasks: this.completedTasks,
+      activityLog: this.activityLog,
+      managerFlowControl: this.managerFlowControl
+    });
   }
 
   enqueueTask(workerId, task, options = {}) {
@@ -116,7 +172,7 @@ class TaskQueue {
       this.queues[workerId].push(fullTask);
       this.logActivity(`Task queued for ${WORKERS[workerId].name}: ${task.description}`);
     }
-    
+    this.save();
     return fullTask;
   }
 
@@ -140,6 +196,7 @@ class TaskQueue {
     }, { source: 'octavia' });
     
     this.logActivity(`Manager delegated task to ${WORKERS[targetWorkerId]?.name || targetWorkerId}: ${delegatedTask.description}`);
+    this.save();
     return delegatedTask;
   }
 
@@ -154,6 +211,7 @@ class TaskQueue {
     task.approvedAt = new Date();
     
     this.logActivity(`Manager approved task: ${task.description}`);
+    this.save();
     return task;
   }
 
@@ -171,6 +229,7 @@ class TaskQueue {
       this.managerFlowControl.agentReports.shift();
     }
     this.logActivity(`Report from ${WORKERS[agentId]?.name || agentId}: ${report.summary || 'Status update'}`);
+    this.save();
     return reportEntry;
   }
 
@@ -188,6 +247,7 @@ class TaskQueue {
       this.managerFlowControl.directorInbox.shift();
     }
     this.logActivity(`Manager → Director: ${message}`);
+    this.save();
     return msg;
   }
 
@@ -212,6 +272,7 @@ class TaskQueue {
     
     this.completedTasks.push(task);
     this.logActivity(`✓ Completed: ${task.description}`);
+    this.save();
     
     // If completed by a worker reporting to manager, notify manager
     if (WORKERS[workerId]?.reportsTo === 'octavia' && task.parentTaskId) {
@@ -239,6 +300,7 @@ class TaskQueue {
     
     this.completedTasks.push(task);
     this.logActivity(`✗ Failed: ${task.description} - ${error}`);
+    this.save();
     
     // If failed by a worker reporting to manager, notify manager
     if (WORKERS[workerId]?.reportsTo === 'octavia' && task.parentTaskId) {
@@ -282,6 +344,7 @@ class TaskQueue {
   setFlowControl(mode) {
     this.managerFlowControl.mode = mode;
     this.logActivity(`Manager flow control set to: ${mode}`);
+    this.save();
     return this.managerFlowControl.mode;
   }
 }
@@ -609,20 +672,30 @@ app.get('/status', (req, res) => {
   res.json({
     timestamp: new Date(),
     workers: {
+      octavia: {
+        name: WORKERS.octavia.name,
+        type: WORKERS.octavia.type,
+        status: 'active',
+        queueLength: taskQueue.getQueue('octavia').length,
+        currentTask: taskQueue.getCurrentTask('octavia')
+      },
       miah: {
         name: WORKERS.miah.name,
+        type: WORKERS.miah.type,
         status: 'active',
         queueLength: taskQueue.getQueue('miah').length,
         currentTask: taskQueue.getCurrentTask('miah')
       },
       markus: {
         name: WORKERS.markus.name,
+        type: WORKERS.markus.type,
         status: 'active',
         queueLength: taskQueue.getQueue('markus').length,
         currentTask: taskQueue.getCurrentTask('markus')
       },
       alexbet: {
         name: WORKERS.alexbet.name,
+        type: WORKERS.alexbet.type,
         status: 'active',
         queueLength: taskQueue.getQueue('alexbet').length,
         currentTask: taskQueue.getCurrentTask('alexbet')
