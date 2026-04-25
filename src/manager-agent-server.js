@@ -1174,10 +1174,6 @@ app.listen(PORT, () => {
   Object.entries(WORKERS).forEach(([id, w]) => {
     console.log(`  - ${w.name} (${w.transport})`);
   });
-
-  // Start Octavia Telegram Bot Interface
-  const telegramBot = require('./telegram-bot');
-  telegramBot.start();
 });
 
 module.exports = app;
