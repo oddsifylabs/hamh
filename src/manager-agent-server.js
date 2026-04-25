@@ -90,7 +90,8 @@ const WORKERS = {
     telegram: '@OctaviaHermesBot',
     capabilities: ['task-orchestration', 'flow-control', 'agent-delegation', 'status-synthesis', 'director-reports', 'writing', 'research', 'admin'],
     description: 'The Manager. The only agent that speaks with the Director (Jesse). Controls task flow between all agents. Writer/Admin/Researcher.',
-    isManager: true
+    isManager: true,
+    riskTier: 2
   },
   miah: {
     name: 'Miah Hermes',
@@ -99,7 +100,8 @@ const WORKERS = {
     host: process.env.MIAH_HOST || null,
     baseUrl: null,
     capabilities: ['write-code', 'deploy', 'debug', 'code-review', 'automation'],
-    reportsTo: 'octavia'
+    reportsTo: 'octavia',
+    riskTier: 3
   },
   markus: {
     name: 'Markus Hermes',
@@ -108,7 +110,8 @@ const WORKERS = {
     host: null,
     baseUrl: null,
     capabilities: ['post-x', 'curate-content', 'engagement', 'analytics', 'schedule'],
-    reportsTo: 'octavia'
+    reportsTo: 'octavia',
+    riskTier: 2
   },
   mitch: {
     name: 'Mitch Hermes',
@@ -117,7 +120,8 @@ const WORKERS = {
     host: null,
     baseUrl: null,
     capabilities: ['sales', 'marketing', 'lead-generation', 'content-strategy', 'analytics', 'crm'],
-    reportsTo: 'octavia'
+    reportsTo: 'octavia',
+    riskTier: 3
   },
   ruth: {
     name: 'Ruth Hermes',
@@ -126,7 +130,8 @@ const WORKERS = {
     host: null,
     baseUrl: null,
     capabilities: ['web-development', 'frontend', 'backend', 'ui-ux', 'deployment', 'maintenance'],
-    reportsTo: 'octavia'
+    reportsTo: 'octavia',
+    riskTier: 2
   },
   nova: {
     name: 'Nova Hermes',
@@ -135,9 +140,199 @@ const WORKERS = {
     host: null,
     baseUrl: null,
     capabilities: ['writing', 'research', 'admin', 'content-creation', 'editing', 'summarization', 'fact-check'],
-    reportsTo: 'octavia'
+    reportsTo: 'octavia',
+    riskTier: 1
   }
 };
+
+// Risk Tier Definitions
+const RISK_TIERS = {
+  1: { label: 'Low Risk', requiresApproval: false, description: 'Info only, no actions' },
+  2: { label: 'Medium Risk', requiresApproval: false, description: 'Limited business impact' },
+  3: { label: 'High Risk', requiresApproval: true, description: 'Significant impact, requires approval' }
+};
+
+
+// ============================================
+// HEALTH TRACKING
+// ============================================
+
+class HealthTracker {
+  constructor() {
+    this.metrics = {};
+    this.windowSize = 100;
+    this.load();
+  }
+
+  load() {
+    const saved = loadState();
+    if (saved && saved.healthMetrics) {
+      this.metrics = saved.healthMetrics;
+    }
+  }
+
+  save() {
+    const state = loadState() || {};
+    state.healthMetrics = this.metrics;
+    saveState(state);
+  }
+
+  recordTask(workerId, task, success, durationMs) {
+    if (!this.metrics[workerId]) {
+      this.metrics[workerId] = { tasks: [], errors: 0, totalDuration: 0 };
+    }
+    const m = this.metrics[workerId];
+    m.tasks.push({ success, durationMs, timestamp: new Date() });
+    if (m.tasks.length > this.windowSize) m.tasks.shift();
+    if (!success) m.errors++;
+    m.totalDuration += durationMs;
+    this.save();
+  }
+
+  getHealth(workerId) {
+    const m = this.metrics[workerId];
+    if (!m || m.tasks.length === 0) {
+      return { score: 100, status: 'healthy', successRate: 1.0, avgLatency: 0, errorCount: 0, totalTasks: 0 };
+    }
+    const total = m.tasks.length;
+    const successes = m.tasks.filter(t => t.success).length;
+    const successRate = successes / total;
+    const avgLatency = m.tasks.reduce((s, t) => s + t.durationMs, 0) / total;
+    const score = Math.round(successRate * 100);
+    let status = 'healthy';
+    if (score < 70) status = 'degraded';
+    if (score < 40) status = 'critical';
+    return { score, status, successRate: Math.round(successRate * 100) / 100, avgLatency: Math.round(avgLatency), errorCount: m.errors, totalTasks: total };
+  }
+
+  getAllHealth() {
+    const result = {};
+    Object.keys(WORKERS).forEach(id => {
+      result[id] = this.getHealth(id);
+    });
+    return result;
+  }
+}
+
+// ============================================
+// COST TRACKING
+// ============================================
+
+class CostTracker {
+  constructor() {
+    this.dailyCosts = {};
+    this.taskCosts = [];
+    this.load();
+  }
+
+  load() {
+    const saved = loadState();
+    if (saved && saved.costData) {
+      this.dailyCosts = saved.costData.dailyCosts || {};
+      this.taskCosts = saved.costData.taskCosts || [];
+    }
+  }
+
+  save() {
+    const state = loadState() || {};
+    state.costData = { dailyCosts: this.dailyCosts, taskCosts: this.taskCosts };
+    saveState(state);
+  }
+
+  recordTask(workerId, taskType, durationMs, tokenEstimate = 0, modelUsed = null) {
+    const date = new Date().toISOString().split('T')[0];
+    if (!this.dailyCosts[date]) this.dailyCosts[date] = {};
+    if (!this.dailyCosts[date][workerId]) {
+      this.dailyCosts[date][workerId] = { tokens: 0, tasks: 0, cost: 0 };
+    }
+    const estimatedCost = tokenEstimate > 0 ? (tokenEstimate / 1000) * 0.003 : 0;
+    this.dailyCosts[date][workerId].tokens += tokenEstimate;
+    this.dailyCosts[date][workerId].tasks += 1;
+    this.dailyCosts[date][workerId].cost += estimatedCost;
+
+    this.taskCosts.push({ workerId, taskType, durationMs, tokenEstimate, modelUsed, date, timestamp: new Date() });
+    if (this.taskCosts.length > 100) this.taskCosts.shift();
+    this.save();
+  }
+
+  getDailySummary(date = null) {
+    const d = date || new Date().toISOString().split('T')[0];
+    return this.dailyCosts[d] || {};
+  }
+
+  getWorkerCosts(workerId, days = 7) {
+    const result = [];
+    for (let i = 0; i < days; i++) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().split('T')[0];
+      result.push({ date: dateStr, ...((this.dailyCosts[dateStr] || {})[workerId] || { tokens: 0, tasks: 0, cost: 0 }) });
+    }
+    return result;
+  }
+}
+
+// ============================================
+// CIRCUIT BREAKER
+// ============================================
+
+class CircuitBreaker {
+  constructor() {
+    this.states = {};
+    this.threshold = parseInt(process.env.CB_THRESHOLD, 10) || 5;
+    this.timeoutMs = parseInt(process.env.CB_TIMEOUT_MS, 10) || 60000;
+  }
+
+  getState(workerId) {
+    return this.states[workerId] || { state: 'CLOSED', failures: 0, lastFailure: null, nextRetry: null };
+  }
+
+  recordSuccess(workerId) {
+    if (!this.states[workerId]) this.states[workerId] = { state: 'CLOSED', failures: 0 };
+    const s = this.states[workerId];
+    if (s.state === 'HALF_OPEN') {
+      s.state = 'CLOSED';
+      s.failures = 0;
+      console.log(`[CircuitBreaker] ${workerId} recovered, state: CLOSED`);
+    } else {
+      s.failures = 0;
+    }
+  }
+
+  recordFailure(workerId) {
+    if (!this.states[workerId]) this.states[workerId] = { state: 'CLOSED', failures: 0 };
+    const s = this.states[workerId];
+    s.failures++;
+    s.lastFailure = new Date();
+    if (s.failures >= this.threshold) {
+      s.state = 'OPEN';
+      s.nextRetry = new Date(Date.now() + this.timeoutMs);
+      console.log(`[CircuitBreaker] ${workerId} OPENED due to ${s.failures} failures. Retry after ${s.nextRetry.toISOString()}`);
+    }
+  }
+
+  canExecute(workerId) {
+    const s = this.getState(workerId);
+    if (s.state === 'CLOSED') return true;
+    if (s.state === 'OPEN') {
+      if (new Date() >= s.nextRetry) {
+        s.state = 'HALF_OPEN';
+        console.log(`[CircuitBreaker] ${workerId} HALF_OPEN, testing...`);
+        return true;
+      }
+      return false;
+    }
+    return true;
+  }
+
+  getStatus() {
+    const result = {};
+    Object.keys(WORKERS).forEach(id => {
+      result[id] = this.getState(id);
+    });
+    return result;
+  }
+}
 
 // ============================================
 // TASK QUEUE & STATE MANAGEMENT
@@ -189,17 +384,25 @@ class TaskQueue {
 
   enqueueTask(workerId, task, options = {}) {
     const taskId = uuidv4();
+    const riskTier = WORKERS[workerId]?.riskTier || 1;
+    const requiresApproval = (riskTier >= 3 && options.source === 'director') ||
+                             (WORKERS[workerId]?.reportsTo === 'octavia' && options.source === 'agent');
     const fullTask = {
       id: taskId,
       workerId,
+      traceId: options.traceId || taskId,
+      parentTaskId: options.parentTaskId || null,
       ...task,
       status: 'queued',
       createdAt: new Date(),
       startedAt: null,
       completedAt: null,
       source: options.source || 'director',
-      approvedByManager: options.source === 'director' ? false : true,
-      requiresApproval: WORKERS[workerId]?.reportsTo === 'octavia' && options.source === 'agent'
+      approvedByManager: !requiresApproval,
+      requiresApproval,
+      riskTier,
+      tokenUsage: 0,
+      modelUsed: null
     };
     
     // If task is from an agent to manager, route to manager queue
@@ -297,7 +500,7 @@ class TaskQueue {
     return this.queues[workerId][0] || null;
   }
 
-  completeTask(workerId, taskId, result) {
+  completeTask(workerId, taskId, result, options = {}) {
     const queue = this.queues[workerId];
     const taskIndex = queue.findIndex(t => t.id === taskId);
     
@@ -307,10 +510,18 @@ class TaskQueue {
     task.status = 'completed';
     task.completedAt = new Date();
     task.result = result;
+    task.tokenUsage = options.tokenUsage || task.tokenUsage || 0;
+    task.modelUsed = options.modelUsed || task.modelUsed || null;
+    const durationMs = task.startedAt ? (task.completedAt - new Date(task.startedAt)) : 0;
     
     this.completedTasks.push(task);
     this.logActivity(`✓ Completed [${workerId}]: ${task.description}`);
     this.save();
+    
+    // Track health, cost, circuit breaker
+    if (healthTracker) healthTracker.recordTask(workerId, task, true, durationMs);
+    if (costTracker) costTracker.recordTask(workerId, task.type, durationMs, task.tokenUsage, task.modelUsed);
+    if (circuitBreaker) circuitBreaker.recordSuccess(workerId);
     
     // If completed by a worker reporting to manager, notify manager
     if (WORKERS[workerId]?.reportsTo === 'octavia' && task.parentTaskId) {
@@ -325,7 +536,7 @@ class TaskQueue {
     return task;
   }
 
-  failTask(workerId, taskId, error) {
+  failTask(workerId, taskId, error, options = {}) {
     const queue = this.queues[workerId];
     const taskIndex = queue.findIndex(t => t.id === taskId);
     
@@ -335,10 +546,15 @@ class TaskQueue {
     task.status = 'failed';
     task.completedAt = new Date();
     task.error = error;
+    const durationMs = task.startedAt ? (task.completedAt - new Date(task.startedAt)) : 0;
     
     this.completedTasks.push(task);
     this.logActivity(`✗ Failed [${workerId}]: ${task.description} - ${error}`);
     this.save();
+    
+    // Track health and circuit breaker
+    if (healthTracker) healthTracker.recordTask(workerId, task, false, durationMs);
+    if (circuitBreaker) circuitBreaker.recordFailure(workerId);
     
     // If failed by a worker reporting to manager, notify manager
     if (WORKERS[workerId]?.reportsTo === 'octavia' && task.parentTaskId) {
@@ -388,6 +604,9 @@ class TaskQueue {
 }
 
 const taskQueue = new TaskQueue();
+const healthTracker = new HealthTracker();
+const costTracker = new CostTracker();
+const circuitBreaker = new CircuitBreaker();
 
 // ============================================
 // COMMAND PARSER
@@ -734,6 +953,9 @@ app.post('/command', requireAuth, async (req, res) => {
 });
 
 app.get('/status', (req, res) => {
+  const health = healthTracker ? healthTracker.getAllHealth() : {};
+  const cb = circuitBreaker ? circuitBreaker.getStatus() : {};
+  
   res.json({
     timestamp: new Date(),
     workers: {
@@ -742,42 +964,60 @@ app.get('/status', (req, res) => {
         type: WORKERS.octavia.type,
         status: 'active',
         queueLength: taskQueue.getQueue('octavia').length,
-        currentTask: taskQueue.getCurrentTask('octavia')
+        currentTask: taskQueue.getCurrentTask('octavia'),
+        riskTier: WORKERS.octavia.riskTier,
+        health: health.octavia,
+        circuitBreaker: cb.octavia
       },
       miah: {
         name: WORKERS.miah.name,
         type: WORKERS.miah.type,
-        status: 'active',
+        status: (cb.miah && cb.miah.state === 'OPEN') ? 'disabled' : 'active',
         queueLength: taskQueue.getQueue('miah').length,
-        currentTask: taskQueue.getCurrentTask('miah')
+        currentTask: taskQueue.getCurrentTask('miah'),
+        riskTier: WORKERS.miah.riskTier,
+        health: health.miah,
+        circuitBreaker: cb.miah
       },
       markus: {
         name: WORKERS.markus.name,
         type: WORKERS.markus.type,
-        status: 'active',
+        status: (cb.markus && cb.markus.state === 'OPEN') ? 'disabled' : 'active',
         queueLength: taskQueue.getQueue('markus').length,
-        currentTask: taskQueue.getCurrentTask('markus')
+        currentTask: taskQueue.getCurrentTask('markus'),
+        riskTier: WORKERS.markus.riskTier,
+        health: health.markus,
+        circuitBreaker: cb.markus
       },
       mitch: {
         name: WORKERS.mitch.name,
         type: WORKERS.mitch.type,
-        status: 'active',
+        status: (cb.mitch && cb.mitch.state === 'OPEN') ? 'disabled' : 'active',
         queueLength: taskQueue.getQueue('mitch').length,
-        currentTask: taskQueue.getCurrentTask('mitch')
+        currentTask: taskQueue.getCurrentTask('mitch'),
+        riskTier: WORKERS.mitch.riskTier,
+        health: health.mitch,
+        circuitBreaker: cb.mitch
       },
       ruth: {
         name: WORKERS.ruth.name,
         type: WORKERS.ruth.type,
-        status: 'active',
+        status: (cb.ruth && cb.ruth.state === 'OPEN') ? 'disabled' : 'active',
         queueLength: taskQueue.getQueue('ruth').length,
-        currentTask: taskQueue.getCurrentTask('ruth')
+        currentTask: taskQueue.getCurrentTask('ruth'),
+        riskTier: WORKERS.ruth.riskTier,
+        health: health.ruth,
+        circuitBreaker: cb.ruth
       },
       nova: {
         name: WORKERS.nova.name,
         type: WORKERS.nova.type,
-        status: 'active',
+        status: (cb.nova && cb.nova.state === 'OPEN') ? 'disabled' : 'active',
         queueLength: taskQueue.getQueue('nova').length,
-        currentTask: taskQueue.getCurrentTask('nova')
+        currentTask: taskQueue.getCurrentTask('nova'),
+        riskTier: WORKERS.nova.riskTier,
+        health: health.nova,
+        circuitBreaker: cb.nova
       }
     },
     activityLog: taskQueue.getActivityLog(20)
@@ -867,6 +1107,17 @@ app.get('/api/tasks/poll', (req, res) => {
     return res.status(400).json({ error: 'Valid agent query param required' });
   }
 
+  // Circuit breaker check
+  if (circuitBreaker && !circuitBreaker.canExecute(agent)) {
+    const cb = circuitBreaker.getState(agent);
+    return res.status(503).json({
+      error: 'Circuit breaker OPEN',
+      state: cb.state,
+      nextRetry: cb.nextRetry,
+      message: `Worker ${agent} is temporarily disabled due to failures. Retry after ${cb.nextRetry}`
+    });
+  }
+
   const queue = taskQueue.queues[agent];
   const pendingTask = queue.find(t => t.status === 'queued');
 
@@ -886,6 +1137,8 @@ app.get('/api/tasks/poll', (req, res) => {
       description: pendingTask.description,
       type: pendingTask.type,
       source: pendingTask.source,
+      traceId: pendingTask.traceId,
+      parentTaskId: pendingTask.parentTaskId,
       createdAt: pendingTask.createdAt,
       parameters: pendingTask.parameters || {}
     }
@@ -895,13 +1148,13 @@ app.get('/api/tasks/poll', (req, res) => {
 // Workers submit results back here
 app.post('/api/tasks/:taskId/complete', requireAuth, (req, res) => {
   const { taskId } = req.params;
-  const { workerId, result } = req.body;
+  const { workerId, result, tokenUsage, modelUsed } = req.body;
 
   if (!workerId || !WORKERS[workerId]) {
     return res.status(400).json({ error: 'Invalid worker' });
   }
 
-  const task = taskQueue.completeTask(workerId, taskId, result);
+  const task = taskQueue.completeTask(workerId, taskId, result, { tokenUsage, modelUsed });
 
   if (!task) {
     return res.status(404).json({ error: 'Task not found' });
@@ -1110,6 +1363,138 @@ app.post('/octavia/reports/:reportId/read', requireAuth, (req, res) => {
   }
   report.status = 'read';
   res.json({ status: 'success', report });
+});
+
+
+// ============================================
+// HEALTH, COSTS, TRACING & CIRCUIT BREAKERS
+// ============================================
+
+app.get('/workers/:workerId/health', (req, res) => {
+  const { workerId } = req.params;
+  if (!WORKERS[workerId]) {
+    return res.status(404).json({ error: 'Worker not found' });
+  }
+  res.json({
+    workerId,
+    name: WORKERS[workerId].name,
+    riskTier: WORKERS[workerId].riskTier,
+    health: healthTracker.getHealth(workerId),
+    circuitBreaker: circuitBreaker.getState(workerId)
+  });
+});
+
+app.get('/workers/:workerId/costs', (req, res) => {
+  const { workerId } = req.params;
+  if (!WORKERS[workerId]) {
+    return res.status(404).json({ error: 'Worker not found' });
+  }
+  const days = parseInt(req.query.days, 10) || 7;
+  res.json({
+    workerId,
+    name: WORKERS[workerId].name,
+    daily: costTracker.getWorkerCosts(workerId, days),
+    today: costTracker.getDailySummary()
+  });
+});
+
+app.get('/circuit-breakers', (req, res) => {
+  res.json({
+    timestamp: new Date(),
+    threshold: circuitBreaker.threshold,
+    timeoutMs: circuitBreaker.timeoutMs,
+    workers: circuitBreaker.getStatus()
+  });
+});
+
+app.post('/circuit-breakers/:workerId/reset', requireAuth, (req, res) => {
+  const { workerId } = req.params;
+  if (!WORKERS[workerId]) {
+    return res.status(404).json({ error: 'Worker not found' });
+  }
+  circuitBreaker.states[workerId] = { state: 'CLOSED', failures: 0, lastFailure: null, nextRetry: null };
+  taskQueue.logActivity(`Circuit breaker manually reset for ${WORKERS[workerId].name}`);
+  res.json({ status: 'reset', workerId });
+});
+
+app.get('/tracing/:taskId', (req, res) => {
+  const { taskId } = req.params;
+  
+  let task = null;
+  for (const wid of Object.keys(WORKERS)) {
+    task = taskQueue.getQueue(wid).find(t => t.id === taskId || t.traceId === taskId);
+    if (task) break;
+  }
+  if (!task) {
+    task = taskQueue.completedTasks.find(t => t.id === taskId || t.traceId === taskId);
+  }
+  
+  if (!task) {
+    return res.status(404).json({ error: 'Task not found' });
+  }
+  
+  const traceId = task.traceId || task.id;
+  const chain = [];
+  
+  for (const wid of Object.keys(WORKERS)) {
+    const queued = taskQueue.getQueue(wid).filter(t => (t.traceId || t.id) === traceId);
+    const completed = taskQueue.completedTasks.filter(t => (t.traceId || t.id) === traceId);
+    chain.push(...queued, ...completed);
+  }
+  
+  chain.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  
+  res.json({
+    traceId,
+    taskCount: chain.length,
+    chain: chain.map(t => ({
+      id: t.id,
+      workerId: t.workerId,
+      workerName: WORKERS[t.workerId] && WORKERS[t.workerId].name,
+      description: t.description,
+      type: t.type,
+      status: t.status,
+      parentTaskId: t.parentTaskId,
+      createdAt: t.createdAt,
+      startedAt: t.startedAt,
+      completedAt: t.completedAt,
+      riskTier: t.riskTier,
+      tokenUsage: t.tokenUsage,
+      modelUsed: t.modelUsed
+    }))
+  });
+});
+
+app.get('/fleet/health', (req, res) => {
+  const health = healthTracker.getAllHealth();
+  const cb = circuitBreaker.getStatus();
+  const summary = {
+    totalWorkers: Object.keys(WORKERS).length,
+    healthy: 0,
+    degraded: 0,
+    critical: 0,
+    disabled: 0
+  };
+  
+  Object.keys(WORKERS).forEach(id => {
+    if (cb[id] && cb[id].state === 'OPEN') summary.disabled++;
+    else if (health[id] && health[id].status === 'healthy') summary.healthy++;
+    else if (health[id] && health[id].status === 'degraded') summary.degraded++;
+    else if (health[id] && health[id].status === 'critical') summary.critical++;
+  });
+  
+  res.json({
+    timestamp: new Date(),
+    summary,
+    workers: Object.keys(WORKERS).reduce((acc, id) => {
+      acc[id] = {
+        name: WORKERS[id].name,
+        health: health[id],
+        circuitBreaker: cb[id]
+      };
+      return acc;
+    }, {})
+  });
 });
 
 // ============================================

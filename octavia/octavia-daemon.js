@@ -69,7 +69,7 @@ async function processManagerTask(task) {
 
   for (const pattern of delegationPatterns) {
     if (pattern.regex.test(desc)) {
-      await delegateToWorker(task.id, pattern.target, task.description);
+      await delegateToWorker(task.id, pattern.target, task.description, { approved: task.approvedByManager });
       return;
     }
   }
@@ -104,8 +104,29 @@ async function processManagerTask(task) {
   log('warn', `No auto-action matched for: ${task.description}`);
 }
 
-async function delegateToWorker(managerTaskId, targetWorkerId, description) {
+async function delegateToWorker(managerTaskId, targetWorkerId, description, options = {}) {
   try {
+    // Check circuit breaker before delegating
+    const fleetHealth = await api.get('/fleet/health');
+    const workerHealth = fleetHealth.data.workers[targetWorkerId];
+    if (workerHealth?.circuitBreaker?.state === 'OPEN') {
+      log('warn', `Delegation BLOCKED: ${targetWorkerId} circuit breaker is OPEN`);
+      await api.post('/octavia/message', {
+        message: `⚠️ Cannot delegate to ${targetWorkerId}: Circuit breaker OPEN. Worker is temporarily disabled due to repeated failures.`,
+      }).catch(() => {});
+      return null;
+    }
+
+    // Check risk tier for approval requirement
+    const riskTier = workerHealth?.health?.riskTier || 1;
+    if (riskTier >= 3 && !options.approved) {
+      log('warn', `Delegation HELD: ${targetWorkerId} is risk tier ${riskTier} — requires director approval`);
+      await api.post('/octavia/message', {
+        message: `🚨 High-risk task held for approval: "${description}" → ${targetWorkerId} (Tier ${riskTier}). Use CLI: hamh approve ${managerTaskId} or set flow=auto with approval.`,
+      }).catch(() => {});
+      return null;
+    }
+
     const { data } = await api.post('/octavia/delegate', {
       taskId: managerTaskId,
       targetWorkerId,
@@ -123,18 +144,23 @@ async function delegateToWorker(managerTaskId, targetWorkerId, description) {
 
 async function generateStatusReport() {
   try {
-    const { data } = await api.get('/status');
-    const workers = Object.entries(data.workers);
+    const { data: statusData } = await api.get('/status');
+    const { data: fleetData } = await api.get('/fleet/health');
+    const workers = Object.entries(statusData.workers);
     const active = workers.filter(([, w]) => w.status === 'active').length;
+    const disabled = workers.filter(([, w]) => w.status === 'disabled').length;
     const totalQueued = workers.reduce((sum, [, w]) => sum + w.queueLength, 0);
 
     let report = `📊 *Fleet Status Report*\n\n`;
-    report += `Active Workers: ${active}/${workers.length}\n`;
-    report += `Total Queued: ${totalQueued}\n\n`;
+    report += `Active: ${active} | Disabled: ${disabled} | Queued: ${totalQueued}\n\n`;
 
     for (const [id, w] of workers) {
       const queueStr = w.queueLength > 0 ? `${w.queueLength} queued` : 'idle';
-      report += `• ${w.name}: ${queueStr}\n`;
+      const healthScore = w.health?.score || 100;
+      const healthEmoji = healthScore >= 90 ? '🟢' : healthScore >= 70 ? '🟡' : '🔴';
+      const cbState = w.circuitBreaker?.state || 'CLOSED';
+      const cbEmoji = cbState === 'CLOSED' ? '' : cbState === 'HALF_OPEN' ? '⚠️' : '🚫';
+      report += `${healthEmoji} ${cbEmoji} ${w.name} (T${w.riskTier || '-'}) | ${queueStr} | Health: ${healthScore}%\n`;
     }
 
     return report;
@@ -151,6 +177,17 @@ async function healthCheck() {
   try {
     const { data } = await api.get('/health');
     log('info', `HAMH health check: ${data.status} (uptime: ${Math.floor(data.uptime)}s)`);
+    
+    // Also check fleet health and alert on circuit breakers
+    const { data: fleet } = await api.get('/fleet/health');
+    for (const [wid, info] of Object.entries(fleet.workers)) {
+      if (info.circuitBreaker?.state === 'OPEN') {
+        log('warn', `${wid} circuit breaker OPEN`);
+        await api.post('/octavia/message', {
+          message: `🚨 ${wid} circuit breaker is OPEN. Worker disabled due to repeated failures.`,
+        }).catch(() => {});
+      }
+    }
   } catch (error) {
     log('error', `HAMH unreachable: ${error.message}`);
     await api.post('/octavia/message', {

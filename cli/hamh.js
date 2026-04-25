@@ -265,6 +265,115 @@ async function cmdConfig(args) {
   console.log();
 }
 
+
+async function cmdHealth() {
+  const api = getApiClient();
+  const { data } = await api.get('/fleet/health');
+
+  console.log();
+  console.log(color('bright', '╔════════════════════════════════════════╗'));
+  console.log(color('bright', '║  FLEET HEALTH                          ║'));
+  console.log(color('bright', '╚════════════════════════════════════════╝'));
+  console.log();
+
+  const s = data.summary;
+  console.log(`  Healthy:  ${color('green', String(s.healthy))}`);
+  console.log(`  Degraded: ${color('yellow', String(s.degraded))}`);
+  console.log(`  Critical: ${color('red', String(s.critical))}`);
+  console.log(`  Disabled: ${color('magenta', String(s.disabled))}`);
+  console.log();
+
+  for (const [id, info] of Object.entries(data.workers)) {
+    const h = info.health || {};
+    const cb = info.circuitBreaker || {};
+    const score = h.score || 100;
+    const scoreColor = score >= 90 ? 'green' : score >= 70 ? 'yellow' : 'red';
+    const cbIcon = cb.state === 'OPEN' ? color('red', '✗') : cb.state === 'HALF_OPEN' ? color('yellow', '~') : color('green', '✓');
+    console.log(`  ${cbIcon} ${color('bright', info.name)} ${color('dim', `(${id})`)}`);
+    console.log(`     Health Score: ${color(scoreColor, `${score}%`)} | Tasks: ${h.totalTasks || 0} | Avg Latency: ${Math.round(h.avgLatencyMs || 0)}ms`);
+    console.log(`     Success: ${Math.round((h.successRate || 1) * 100)}% | Errors: ${h.errorCount || 0} | CB: ${cb.state || 'CLOSED'}`);
+    console.log();
+  }
+}
+
+async function cmdCosts(args) {
+  const api = getApiClient();
+  const workerId = args.find(a => !a.startsWith('--'));
+  const daysIdx = args.indexOf('--days');
+  const days = daysIdx !== -1 ? parseInt(args[daysIdx + 1], 10) || 7 : 7;
+
+  if (workerId) {
+    const { data } = await api.get(`/workers/${workerId}/costs`, { params: { days } });
+    console.log();
+    console.log(color('bright', `┌─────────────────── COSTS: ${data.name} ───────────────────┐`));
+    console.log(`  Daily breakdown (last ${days} days):`);
+    for (const [date, info] of Object.entries(data.daily)) {
+      const costColor = (info.estimatedCost || 0) > 5 ? 'yellow' : 'dim';
+      console.log(`    ${date}: ${info.taskCount} tasks | ${info.totalTokens} tokens | ${color(costColor, `$${(info.estimatedCost || 0).toFixed(4)}`)}`);
+    }
+    console.log();
+  } else {
+    const { data } = await api.get('/status');
+    console.log();
+    console.log(color('bright', '┌─────────────────── FLEET COSTS ───────────────────┐'));
+    for (const [id, w] of Object.entries(data.workers)) {
+      const h = w.health || {};
+      console.log(`  ${color('bright', w.name)}: ${h.totalTokens || 0} tokens | ${h.totalTasks || 0} tasks`);
+    }
+    console.log();
+  }
+}
+
+async function cmdApprove(taskId) {
+  if (!taskId) {
+    console.error(color('red', 'Usage: hamh approve <task-id>'));
+    process.exit(1);
+  }
+  const api = getApiClient();
+  // Find the task and approve it by updating its state
+  // We'll use the command endpoint with an approval flag
+  const { data } = await api.post('/command', {
+    command: `approve ${taskId}`,
+    source: 'cli',
+    approved: true
+  });
+  console.log(color('green', `✓ Task ${taskId} approved`));
+  console.log(`  Status: ${data.status}`);
+}
+
+async function cmdTrace(taskId) {
+  if (!taskId) {
+    console.error(color('red', 'Usage: hamh trace <task-id-or-trace-id>'));
+    process.exit(1);
+  }
+  const api = getApiClient();
+  const { data } = await api.get(`/tracing/${taskId}`);
+
+  console.log();
+  console.log(color('bright', `┌────────────────── TRACE: ${data.traceId} ──────────────────┐`));
+  console.log(`  Tasks in chain: ${data.taskCount}`);
+  console.log();
+
+  for (const t of data.chain) {
+    const statusColor = t.status === 'completed' ? 'green' : t.status === 'failed' ? 'red' : 'yellow';
+    const parent = t.parentTaskId ? color('dim', ` ← ${t.parentTaskId.slice(0,8)}`) : '';
+    console.log(`  ${color(statusColor, t.status.toUpperCase())} [${t.workerName}] ${t.description.slice(0, 50)}${t.description.length > 50 ? '...' : ''}${parent}`);
+    console.log(`    Type: ${t.type} | Risk: T${t.riskTier} | Tokens: ${t.tokenUsage || 0} | Model: ${t.modelUsed || 'N/A'}`);
+  }
+  console.log();
+}
+
+async function cmdResetCB(args) {
+  const workerId = args[0];
+  if (!workerId) {
+    console.error(color('red', 'Usage: hamh reset-cb <worker-id>'));
+    process.exit(1);
+  }
+  const api = getApiClient();
+  const { data } = await api.post(`/circuit-breakers/${workerId}/reset`);
+  console.log(color('green', `✓ Circuit breaker reset for ${workerId}`));
+}
+
 function showHelp() {
   console.log();
   console.log(color('bright', 'HAMH CLI - Hermes Agent Management Hub'));
@@ -272,10 +381,15 @@ function showHelp() {
   console.log();
   console.log('Commands:');
   console.log(`  ${color('cyan', 'hamh status')}              Show fleet status`);
+  console.log(`  ${color('cyan', 'hamh health')}              Show fleet health scores & circuit breakers`);
   console.log(`  ${color('cyan', 'hamh send "<cmd>"')}        Send a command (e.g., @markus post-x hi)`);
   console.log(`  ${color('cyan', 'hamh inbox')}               Check director inbox & agent reports`);
   console.log(`  ${color('cyan', 'hamh logs [--limit N]')}    Show activity log`);
   console.log(`  ${color('cyan', 'hamh workers')}             List all workers`);
+  console.log(`  ${color('cyan', 'hamh costs [worker]')}      Show cost attribution (add --days N)`);
+  console.log(`  ${color('cyan', 'hamh approve <id>')}        Approve a high-risk task`);
+  console.log(`  ${color('cyan', 'hamh trace <id>')}           Trace a task chain`);
+  console.log(`  ${color('cyan', 'hamh reset-cb <worker>')}   Reset a worker's circuit breaker`);
   console.log(`  ${color('cyan', 'hamh config')}              Show config`);
   console.log(`  ${color('cyan', 'hamh config --set url <url>')}   Set HAMH URL`);
   console.log(`  ${color('cyan', 'hamh config --set key <key>')}   Set API key`);
@@ -296,6 +410,10 @@ async function main() {
       case 's':
         await cmdStatus();
         break;
+      case 'health':
+      case 'h':
+        await cmdHealth();
+        break;
       case 'send':
         await cmdSend(args.slice(1).join(' '));
         break;
@@ -310,6 +428,19 @@ async function main() {
       case 'workers':
       case 'w':
         await cmdWorkers();
+        break;
+      case 'costs':
+      case 'cost':
+        await cmdCosts(args.slice(1));
+        break;
+      case 'approve':
+        await cmdApprove(args[1]);
+        break;
+      case 'trace':
+        await cmdTrace(args[1]);
+        break;
+      case 'reset-cb':
+        await cmdResetCB(args.slice(1));
         break;
       case 'config':
       case 'c':

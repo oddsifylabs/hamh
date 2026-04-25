@@ -46,6 +46,7 @@ const AGENTS = {
   miah: {
     id: 'miah',
     name: 'Miah Hermes',
+    riskTier: 3,
     type: 'vps',
     transport: 'poll',
     icon: '🧠',
@@ -57,6 +58,7 @@ const AGENTS = {
   markus: {
     id: 'markus',
     name: 'Markus Hermes',
+    riskTier: 2,
     type: 'local',
     transport: 'poll',
     icon: '📱',
@@ -68,6 +70,7 @@ const AGENTS = {
   mitch: {
     id: 'mitch',
     name: 'Mitch Hermes',
+    riskTier: 3,
     type: 'railway',
     transport: 'poll',
     icon: '💼',
@@ -79,6 +82,7 @@ const AGENTS = {
   ruth: {
     id: 'ruth',
     name: 'Ruth Hermes',
+    riskTier: 2,
     type: 'railway',
     transport: 'poll',
     icon: '💻',
@@ -90,6 +94,7 @@ const AGENTS = {
   nova: {
     id: 'nova',
     name: 'Nova Hermes',
+    riskTier: 1,
     type: 'railway',
     transport: 'poll',
     icon: '📜',
@@ -383,10 +388,11 @@ function navigateTo(view, params = {}) {
 function updateDashboard() {
   // Stats
   const activeAgents = Object.values(state.workers).filter(w => w.status === 'active').length;
+  const disabledAgents = Object.values(state.workers).filter(w => w.status === 'disabled').length;
   const totalQueued = Object.values(state.workers).reduce((sum, w) => sum + (w.queueLength || 0), 0);
   const completed = state.tasks.completed.length;
 
-  $('#statAgents').textContent = activeAgents;
+  $('#statAgents').textContent = activeAgents + (disabledAgents > 0 ? ` (${disabledAgents} disabled)` : '');
   $('#statTasks').textContent = totalQueued;
   $('#statCompleted').textContent = completed;
   $('#statUptime').textContent = formatDuration(state.uptime || 0);
@@ -399,15 +405,19 @@ function updateDashboard() {
     if (!agent) return;
     const row = document.createElement('div');
     row.className = 'agent-row';
+    const healthScore = worker.health?.score || 100;
+    const healthColor = healthScore >= 90 ? '#4ade80' : healthScore >= 70 ? '#fbbf24' : '#f87171';
+    const cbState = worker.circuitBreaker?.state || 'CLOSED';
+    const cbIcon = cbState === 'OPEN' ? '🚫' : cbState === 'HALF_OPEN' ? '⚠️' : '';
     row.innerHTML = `
       <div class="agent-row-avatar">${agent.icon}</div>
       <div class="agent-row-info">
-        <div class="agent-row-name">${agent.name}</div>
-        <div class="agent-row-meta">${agent.type.toUpperCase()} · ${worker.queueLength || 0} queued</div>
+        <div class="agent-row-name">${agent.name} ${cbIcon} <span style="font-size:11px;color:#94a3b8;">T${agent.riskTier || '-'}</span></div>
+        <div class="agent-row-meta">${agent.type.toUpperCase()} · ${worker.queueLength || 0} queued · <span style="color:${healthColor}">❤ ${healthScore}%</span></div>
       </div>
       <div class="agent-row-status">
         <span class="status-indicator ${worker.status || 'active'}"></span>
-        <span>${worker.status === 'active' ? 'Online' : 'Offline'}</span>
+        <span>${worker.status === 'active' ? 'Online' : worker.status === 'disabled' ? 'Disabled' : 'Offline'}</span>
       </div>
     `;
     row.addEventListener('click', () => {
@@ -666,13 +676,43 @@ async function updateAgentDetail(agentId) {
 
   $('#agentDetailName').textContent = agent.name;
   $('#agentDetailSubtitle').textContent = agent.description;
-  $('#agentDetailStatus').textContent = worker.status === 'active' ? 'Active' : 'Offline';
-  $('#agentDetailStatus').style.background = worker.status === 'active' ? 'var(--success-soft)' : 'var(--danger-soft)';
-  $('#agentDetailStatus').style.color = worker.status === 'active' ? 'var(--success)' : 'var(--danger)';
+  const isDisabled = worker.status === 'disabled';
+  $('#agentDetailStatus').textContent = isDisabled ? 'Disabled (CB)' : (worker.status === 'active' ? 'Active' : 'Offline');
+  $('#agentDetailStatus').style.background = worker.status === 'active' ? 'var(--success-soft)' : isDisabled ? 'var(--warning-soft)' : 'var(--danger-soft)';
+  $('#agentDetailStatus').style.color = worker.status === 'active' ? 'var(--success)' : isDisabled ? 'var(--warning)' : 'var(--danger)';
   $('#agentDetailType').textContent = agent.type.toUpperCase();
   $('#agentDetailTransport').textContent = agent.transport.toUpperCase();
   $('#agentDetailQueue').textContent = worker.queueLength || 0;
   $('#agentDetailEndpoint').textContent = worker.host || worker.baseUrl || 'Local';
+
+  // Health & Risk metrics
+  const healthScore = worker.health?.score || 100;
+  const healthStatus = worker.health?.status || 'healthy';
+  const cbState = worker.circuitBreaker?.state || 'CLOSED';
+  const riskLabel = agent.riskTier ? `Tier ${agent.riskTier}` : 'N/A';
+  
+  // Inject health panel if not present
+  let healthPanel = $('#agentHealthPanel');
+  if (!healthPanel) {
+    const infoGrid = document.querySelector('.agent-info-grid');
+    if (infoGrid) {
+      healthPanel = document.createElement('div');
+      healthPanel.id = 'agentHealthPanel';
+      healthPanel.className = 'agent-info-grid';
+      healthPanel.style.marginTop = '12px';
+      infoGrid.parentNode.insertBefore(healthPanel, infoGrid.nextSibling);
+    }
+  }
+  if (healthPanel) {
+    healthPanel.innerHTML = `
+      <div class="info-item"><div class="info-label">Risk Tier</div><div class="info-value">${riskLabel}</div></div>
+      <div class="info-item"><div class="info-label">Health Score</div><div class="info-value" style="color:${healthScore >= 90 ? 'var(--success)' : healthScore >= 70 ? 'var(--warning)' : 'var(--danger)'}">${healthScore}%</div></div>
+      <div class="info-item"><div class="info-label">Success Rate</div><div class="info-value">${Math.round((worker.health?.successRate || 1) * 100)}%</div></div>
+      <div class="info-item"><div class="info-label">Avg Latency</div><div class="info-value">${Math.round(worker.health?.avgLatencyMs || 0)}ms</div></div>
+      <div class="info-item"><div class="info-label">Total Tasks</div><div class="info-value">${worker.health?.totalTasks || 0}</div></div>
+      <div class="info-item"><div class="info-label">Circuit Breaker</div><div class="info-value" style="color:${cbState === 'OPEN' ? 'var(--danger)' : cbState === 'HALF_OPEN' ? 'var(--warning)' : 'var(--success)'}">${cbState}</div></div>
+    `;
+  }
 
   // Capabilities
   const capList = $('#agentDetailCapabilities');
