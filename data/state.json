@@ -1,0 +1,49 @@
+{
+  "queues": {
+    "octavia": [],
+    "miah": [],
+    "markus": [],
+    "mitch": [],
+    "ruth": []
+  },
+  "completedTasks": [
+    {
+      "id": "50987c04-c795-426d-a125-173cd3cb5717",
+      "workerId": "markus",
+      "description": "post-x test from CLI",
+      "type": "custom",
+      "status": "completed",
+      "createdAt": "2026-04-25T05:18:07.629Z",
+      "startedAt": "2026-04-25T05:18:10.682Z",
+      "completedAt": "2026-04-25T05:18:14.798Z",
+      "source": "cli",
+      "approvedByManager": true,
+      "requiresApproval": false,
+      "result": "Posted successfully!"
+    }
+  ],
+  "activityLog": [
+    {
+      "timestamp": "2026-04-25T05:17:50.346Z",
+      "message": "Manager Agent started"
+    },
+    {
+      "timestamp": "2026-04-25T05:18:07.628Z",
+      "message": "cli Command: @markus post-x test from CLI"
+    },
+    {
+      "timestamp": "2026-04-25T05:18:07.629Z",
+      "message": "Task queued for Markus Hermes: post-x test from CLI"
+    },
+    {
+      "timestamp": "2026-04-25T05:18:14.798Z",
+      "message": "✓ Completed [markus]: post-x test from CLI"
+    }
+  ],
+  "managerFlowControl": {
+    "mode": "auto",
+    "pendingApprovals": [],
+    "agentReports": [],
+    "directorInbox": []
+  }
+}

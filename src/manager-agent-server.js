@@ -59,32 +59,20 @@ function saveState(state) {
 }
 
 // ============================================
-// TELEGRAM NOTIFICATIONS
+// AUTHENTICATION
 // ============================================
+const API_KEY = process.env.API_KEY;
 
-async function notifyDirector(message) {
-  const botToken = process.env.TELEGRAM_BOT_TOKEN;
-  const chatId = process.env.JESSE_CHAT_ID;
-
-  if (!botToken || !chatId) {
-    console.log('[Notify] Telegram not configured:', message);
-    return;
+function requireAuth(req, res, next) {
+  if (!API_KEY) {
+    // If no API key is configured, skip auth (development mode)
+    return next();
   }
-
-  try {
-    await axios.post(
-      `https://api.telegram.org/bot${botToken}/sendMessage`,
-      {
-        chat_id: chatId,
-        text: message,
-        parse_mode: 'Markdown',
-        disable_web_page_preview: true
-      },
-      { timeout: 15000 }
-    );
-  } catch (error) {
-    console.error('[Notify] Failed to send Telegram message:', error.message);
+  const provided = req.headers['x-api-key'] || req.query.apiKey;
+  if (provided !== API_KEY) {
+    return res.status(401).json({ error: 'Unauthorized. Provide X-API-Key header.' });
   }
+  next();
 }
 
 // ============================================
@@ -493,10 +481,8 @@ class TaskExecutor {
         result = await this.executeSsh(task, worker);
       } else if (worker.transport === 'http') {
         result = await this.executeHttp(task, worker);
-      } else if (worker.transport === 'telegram') {
-        result = await this.executeTelegram(task, worker);
       } else {
-        throw new Error(`Unknown transport: ${worker.transport}`);
+        throw new Error(`Worker ${worker.name} uses polling and must pick up tasks via /api/tasks/poll`);
       }
 
       return { success: true, result };
@@ -560,55 +546,13 @@ class TaskExecutor {
       throw new Error(`HTTP execution failed: ${error.message}`);
     }
   }
-
-  static async executeTelegram(task, worker) {
-    try {
-      if (!worker.botToken || !worker.chatId) {
-        throw new Error('Telegram bot token or chat ID not configured');
-      }
-
-      const text = `🚀 *HAMH Task for Markus*
-
-*Task ID:* \`${task.id}\`
-*Type:* ${task.type}
-*From:* ${task.source || 'Director'}
-
-${task.description}
-
-_Reply with \`/done ${task.id}\` when complete._
-      `.trim();
-
-      const response = await axios.post(
-        `https://api.telegram.org/bot${worker.botToken}/sendMessage`,
-        {
-          chat_id: worker.chatId,
-          text: text,
-          parse_mode: 'Markdown',
-          disable_web_page_preview: true
-        },
-        { timeout: 15000 }
-      );
-
-      if (!response.data.ok) {
-        throw new Error(response.data.description || 'Telegram API error');
-      }
-
-      return {
-        status: 'success',
-        telegramMessageId: response.data.result.message_id,
-        sentTo: worker.chatId
-      };
-    } catch (error) {
-      throw new Error(`Telegram delivery failed: ${error.message}`);
-    }
-  }
 }
 
 // ============================================
 // API ENDPOINTS
 // ============================================
 
-app.post('/command', async (req, res) => {
+app.post('/command', requireAuth, async (req, res) => {
   const { command, source = 'director' } = req.body;
 
   if (!command || typeof command !== 'string') {
@@ -734,8 +678,6 @@ app.post('/command', async (req, res) => {
 
       // Polling workers pick up tasks themselves — do not auto-execute
       if (WORKERS[workerId].transport === 'poll') {
-        const msg = `📋 *Task Queued*\n\n*Agent:* ${WORKERS[workerId].name}\n*Task:* ${task.description}\n*ID:* \`${task.id}\``;
-        notifyDirector(msg);
         return res.json({
           status: 'queued',
           task,
@@ -831,7 +773,7 @@ app.get('/activity', (req, res) => {
   res.json({ log: taskQueue.getActivityLog(limit) });
 });
 
-app.post('/legacy/task', (req, res) => {
+app.post('/legacy/task', requireAuth, (req, res) => {
   const { agentId, action, params } = req.body;
 
   const legacyMap = {
@@ -919,7 +861,7 @@ app.get('/api/tasks/poll', (req, res) => {
 });
 
 // Workers submit results back here
-app.post('/api/tasks/:taskId/complete', (req, res) => {
+app.post('/api/tasks/:taskId/complete', requireAuth, (req, res) => {
   const { taskId } = req.params;
   const { workerId, result } = req.body;
 
@@ -933,14 +875,11 @@ app.post('/api/tasks/:taskId/complete', (req, res) => {
     return res.status(404).json({ error: 'Task not found' });
   }
 
-  const msg = `✅ *Task Complete*\n\n*Agent:* ${WORKERS[workerId].name}\n*Task:* ${task.description}\n*Result:* ${typeof result === 'string' ? result : JSON.stringify(result).slice(0, 200)}`;
-  notifyDirector(msg);
-
   res.json({ status: 'completed', task });
 });
 
 // Workers report failures here
-app.post('/api/tasks/:taskId/fail', (req, res) => {
+app.post('/api/tasks/:taskId/fail', requireAuth, (req, res) => {
   const { taskId } = req.params;
   const { workerId, error } = req.body;
 
@@ -953,9 +892,6 @@ app.post('/api/tasks/:taskId/fail', (req, res) => {
   if (!task) {
     return res.status(404).json({ error: 'Task not found' });
   }
-
-  const msg = `❌ *Task Failed*\n\n*Agent:* ${WORKERS[workerId].name}\n*Task:* ${task.description}\n*Error:* ${error}`;
-  notifyDirector(msg);
 
   res.json({ status: 'failed', task });
 });
@@ -994,7 +930,7 @@ app.get('/octavia/status', (req, res) => {
 });
 
 // Set manager flow control mode (auto / manual)
-app.post('/octavia/flow', (req, res) => {
+app.post('/octavia/flow', requireAuth, (req, res) => {
   const { mode } = req.body;
   if (!mode || !['auto', 'manual'].includes(mode)) {
     return res.status(400).json({ error: 'Mode must be "auto" or "manual"' });
@@ -1004,7 +940,7 @@ app.post('/octavia/flow', (req, res) => {
 });
 
 // Manager delegates a task to a worker
-app.post('/octavia/delegate', async (req, res) => {
+app.post('/octavia/delegate', requireAuth, async (req, res) => {
   const { taskId, targetWorkerId, taskData } = req.body;
 
   if (!taskId || !targetWorkerId || !WORKERS[targetWorkerId]) {
@@ -1019,8 +955,6 @@ app.post('/octavia/delegate', async (req, res) => {
 
     // Polling workers pick up tasks themselves — do not auto-execute
     if (WORKERS[targetWorkerId].transport === 'poll') {
-      const msg = `📋 *Task Delegated*\n\n*Manager:* Octavia → *Agent:* ${WORKERS[targetWorkerId].name}\n*Task:* ${delegated.description}\n*ID:* \`${delegated.id}\``;
-      notifyDirector(msg);
       return res.json({
         status: 'success',
         flow: 'manager → agent (poll)',
@@ -1050,7 +984,7 @@ app.post('/octavia/delegate', async (req, res) => {
 });
 
 // Manager approves a task
-app.post('/octavia/approve', (req, res) => {
+app.post('/octavia/approve', requireAuth, (req, res) => {
   const { taskId } = req.body;
   if (!taskId) {
     return res.status(400).json({ error: 'taskId required' });
@@ -1065,7 +999,7 @@ app.post('/octavia/approve', (req, res) => {
 });
 
 // Agent submits report to manager
-app.post('/octavia/report', (req, res) => {
+app.post('/octavia/report', requireAuth, (req, res) => {
   const { agentId, type, summary, result, error } = req.body;
 
   if (!agentId || !WORKERS[agentId]) {
@@ -1083,7 +1017,7 @@ app.post('/octavia/report', (req, res) => {
 });
 
 // Manager sends message to Director
-app.post('/octavia/message', (req, res) => {
+app.post('/octavia/message', requireAuth, (req, res) => {
   const { message } = req.body;
   if (!message) {
     return res.status(400).json({ error: 'Message required' });
@@ -1108,7 +1042,7 @@ app.get('/octavia/inbox', (req, res) => {
 });
 
 // Mark director inbox message as read
-app.post('/octavia/inbox/:messageId/read', (req, res) => {
+app.post('/octavia/inbox/:messageId/read', requireAuth, (req, res) => {
   const { messageId } = req.params;
   const msg = taskQueue.managerFlowControl.directorInbox.find(m => m.id === messageId);
   if (!msg) {
@@ -1136,7 +1070,7 @@ app.get('/octavia/reports', (req, res) => {
 });
 
 // Mark agent report as read
-app.post('/octavia/reports/:reportId/read', (req, res) => {
+app.post('/octavia/reports/:reportId/read', requireAuth, (req, res) => {
   const { reportId } = req.params;
   const report = taskQueue.managerFlowControl.agentReports.find(r => r.id === reportId);
   if (!report) {
