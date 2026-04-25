@@ -87,6 +87,17 @@ const AGENTS = {
     templates: ['build page', 'fix bug', 'deploy site', 'ui update'],
     reportsTo: 'octavia',
   },
+  nova: {
+    id: 'nova',
+    name: 'Nova Hermes',
+    type: 'railway',
+    transport: 'poll',
+    icon: '📜',
+    description: 'Writer, admin assistant, and researcher. Blogs, copy, research, summaries, fact-checking.',
+    capabilities: ['writing', 'research', 'admin', 'content-creation', 'editing', 'summarization', 'fact-check'],
+    templates: ['write blog', 'research topic', 'summarize article', 'draft email', 'edit copy', 'fact-check claim', 'admin report'],
+    reportsTo: 'octavia',
+  },
 };
 
 // ============================================

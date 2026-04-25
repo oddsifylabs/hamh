@@ -64,6 +64,7 @@ async function processManagerTask(task) {
     { regex: /@?markus/, target: 'markus' },
     { regex: /@?mitch/, target: 'mitch' },
     { regex: /@?ruth/, target: 'ruth' },
+    { regex: /@?nova/, target: 'nova' },
   ];
 
   for (const pattern of delegationPatterns) {

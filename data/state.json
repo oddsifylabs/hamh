@@ -4,7 +4,22 @@
     "miah": [],
     "markus": [],
     "mitch": [],
-    "ruth": []
+    "ruth": [],
+    "nova": [
+      {
+        "id": "1338e48d-1dc0-4291-ab12-eab3962ecaad",
+        "workerId": "nova",
+        "description": "Write: write blog post about AI agents",
+        "type": "writing",
+        "status": "in-progress",
+        "createdAt": "2026-04-25T06:01:13.524Z",
+        "startedAt": "2026-04-25T06:01:13.532Z",
+        "completedAt": null,
+        "source": "test",
+        "approvedByManager": true,
+        "requiresApproval": false
+      }
+    ]
   },
   "completedTasks": [
     {
@@ -38,6 +53,18 @@
     {
       "timestamp": "2026-04-25T05:18:14.798Z",
       "message": "✓ Completed [markus]: post-x test from CLI"
+    },
+    {
+      "timestamp": "2026-04-25T06:01:11.674Z",
+      "message": "Manager Agent started"
+    },
+    {
+      "timestamp": "2026-04-25T06:01:13.523Z",
+      "message": "test Command: @nova write blog post about AI agents"
+    },
+    {
+      "timestamp": "2026-04-25T06:01:13.524Z",
+      "message": "Task queued for Nova Hermes: Write: write blog post about AI agents"
     }
   ],
   "managerFlowControl": {

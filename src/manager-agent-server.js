@@ -127,6 +127,15 @@ const WORKERS = {
     baseUrl: null,
     capabilities: ['web-development', 'frontend', 'backend', 'ui-ux', 'deployment', 'maintenance'],
     reportsTo: 'octavia'
+  },
+  nova: {
+    name: 'Nova Hermes',
+    type: 'railway',
+    transport: 'poll',
+    host: null,
+    baseUrl: null,
+    capabilities: ['writing', 'research', 'admin', 'content-creation', 'editing', 'summarization', 'fact-check'],
+    reportsTo: 'octavia'
   }
 };
 
@@ -141,7 +150,8 @@ class TaskQueue {
       miah: [],
       markus: [],
       mitch: [],
-      ruth: []
+      ruth: [],
+      nova: []
     };
     this.completedTasks = [];
     this.activityLog = [];
@@ -157,7 +167,10 @@ class TaskQueue {
   load() {
     const saved = loadState();
     if (saved) {
-      if (saved.queues) this.queues = saved.queues;
+      if (saved.queues) {
+        // Merge saved queues with defaults to handle new workers
+        this.queues = { ...this.queues, ...saved.queues };
+      }
       if (saved.completedTasks) this.completedTasks = saved.completedTasks;
       if (saved.activityLog) this.activityLog = saved.activityLog;
       if (saved.managerFlowControl) this.managerFlowControl = saved.managerFlowControl;
@@ -414,7 +427,7 @@ class CommandParser {
       };
     }
 
-    const mentionMatch = trimmed.match(/^@(miah|markus|mitch|ruth|octavia)\s+(.+)$/i);
+    const mentionMatch = trimmed.match(/^@(miah|markus|mitch|ruth|nova|octavia)\s+(.+)$/i);
     if (mentionMatch) {
       const [_, workerId, taskDesc] = mentionMatch;
       return {
@@ -457,6 +470,15 @@ class CommandParser {
         'fix': { description: `Fix: ${description}`, type: 'maintenance' },
         'deploy': { description: `Deploy: ${description}`, type: 'deployment' },
         'ui': { description: `UI/UX: ${description}`, type: 'ui-ux' }
+      },
+      nova: {
+        'write': { description: `Write: ${description}`, type: 'writing' },
+        'research': { description: `Research: ${description}`, type: 'research' },
+        'summarize': { description: `Summarize: ${description}`, type: 'summarization' },
+        'draft': { description: `Draft: ${description}`, type: 'content-creation' },
+        'edit': { description: `Edit: ${description}`, type: 'editing' },
+        'fact': { description: `Fact-check: ${description}`, type: 'fact-check' },
+        'admin': { description: `Admin: ${description}`, type: 'admin' }
       }
     };
 
@@ -578,7 +600,8 @@ app.post('/command', requireAuth, async (req, res) => {
           miah: taskQueue.getQueue('miah'),
           markus: taskQueue.getQueue('markus'),
           mitch: taskQueue.getQueue('mitch'),
-          ruth: taskQueue.getQueue('ruth')
+          ruth: taskQueue.getQueue('ruth'),
+          nova: taskQueue.getQueue('nova')
         },
         manager: taskQueue.getManagerStatus(),
         timestamp: new Date()
@@ -603,7 +626,7 @@ app.post('/command', requireAuth, async (req, res) => {
         taskQueue.approveTask(task.id);
 
         // Simple auto-delegation: if directive mentions an agent, delegate there
-        const targetAgent = ['miah', 'markus', 'mitch', 'ruth'].find(id =>
+        const targetAgent = ['miah', 'markus', 'mitch', 'ruth', 'nova'].find(id =>
           parsed.description.toLowerCase().includes(id)
         );
 
@@ -748,6 +771,13 @@ app.get('/status', (req, res) => {
         status: 'active',
         queueLength: taskQueue.getQueue('ruth').length,
         currentTask: taskQueue.getCurrentTask('ruth')
+      },
+      nova: {
+        name: WORKERS.nova.name,
+        type: WORKERS.nova.type,
+        status: 'active',
+        queueLength: taskQueue.getQueue('nova').length,
+        currentTask: taskQueue.getCurrentTask('nova')
       }
     },
     activityLog: taskQueue.getActivityLog(20)
@@ -780,7 +810,8 @@ app.post('/legacy/task', requireAuth, (req, res) => {
     'coder': 'miah',
     'social': 'markus',
     'sales': 'mitch',
-    'web': 'ruth'
+    'web': 'ruth',
+    'writer': 'nova'
   };
 
   const workerId = legacyMap[agentId];
@@ -805,7 +836,8 @@ app.get('/legacy/status/:agentId', (req, res) => {
     'coder': 'miah',
     'social': 'markus',
     'sales': 'mitch',
-    'web': 'ruth'
+    'web': 'ruth',
+    'writer': 'nova'
   };
 
   const workerId = legacyMap[agentId];
