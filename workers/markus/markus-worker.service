@@ -1,0 +1,16 @@
+[Unit]
+Description=Markus Hermes Worker
+After=network.target
+
+[Service]
+Type=simple
+User=markus
+WorkingDirectory=/home/markus/markus-worker
+ExecStart=/usr/bin/node markus-worker.js
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

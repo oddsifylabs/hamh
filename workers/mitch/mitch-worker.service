@@ -1,0 +1,14 @@
+[Unit]
+Description=Mitch Hermes Worker
+After=network.target
+
+[Service]
+Type=simple
+User=mitch
+WorkingDirectory=/home/mitch/mitch-worker
+ExecStart=/usr/bin/node mitch-worker.js
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

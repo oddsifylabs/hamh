@@ -1,0 +1,14 @@
+[Unit]
+Description=Ruth Hermes Worker
+After=network.target
+
+[Service]
+Type=simple
+User=ruth
+WorkingDirectory=/home/ruth/ruth-worker
+ExecStart=/usr/bin/node ruth-worker.js
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
