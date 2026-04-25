@@ -31,16 +31,17 @@ const state = {
 
 // Agent definitions (mirrors server config)
 const AGENTS = {
-  manager: {
-    id: 'manager',
-    name: 'Manager Agent',
+  octavia: {
+    id: 'octavia',
+    name: 'Octavia Hermes',
     type: 'director-facing',
     transport: 'internal',
     icon: '🎛️',
-    description: 'The only agent that speaks with the Director. Controls task flow between all agents.',
-    capabilities: ['task-orchestration', 'flow-control', 'agent-delegation', 'status-synthesis', 'director-reports'],
+    description: 'The Manager. The only agent that speaks with the Director (Jesse). Controls task flow between all agents. Writer/Admin/Researcher.',
+    capabilities: ['task-orchestration', 'flow-control', 'agent-delegation', 'status-synthesis', 'director-reports', 'writing', 'research', 'admin'],
     templates: ['delegate to @miah', 'status report', 'pause all', 'approve task'],
     role: 'orchestrator',
+    isManager: true,
   },
   miah: {
     id: 'miah',
@@ -51,7 +52,7 @@ const AGENTS = {
     description: 'Software coder agent deployed on VPS',
     capabilities: ['write-code', 'deploy', 'debug', 'code-review', 'automation'],
     templates: ['deploy code', 'write feature', 'debug error', 'review PR'],
-    reportsTo: 'manager',
+    reportsTo: 'octavia',
   },
   markus: {
     id: 'markus',
@@ -62,7 +63,7 @@ const AGENTS = {
     description: 'Social media manager running locally',
     capabilities: ['post-x', 'curate-content', 'engagement', 'analytics', 'schedule'],
     templates: ['post update', 'check engagement', 'schedule post', 'analytics report'],
-    reportsTo: 'manager',
+    reportsTo: 'octavia',
   },
   alexbet: {
     id: 'alexbet',
@@ -73,7 +74,7 @@ const AGENTS = {
     description: 'Market scanner hosted on Railway',
     capabilities: ['scan-markets', 'kelly-sizing', 'edge-detection', 'alerts', 'pnl-tracking'],
     templates: ['scan markets', 'kelly sizing', 'edge detect', 'set alert'],
-    reportsTo: 'manager',
+    reportsTo: 'octavia',
   },
 };
 
@@ -126,44 +127,44 @@ const api = {
   },
 
   // Manager endpoints
-  async managerStatus() {
-    return this.request('/manager/status');
+  async octaviaStatus() {
+    return this.request('/octavia/status');
   },
 
-  async setManagerFlow(mode) {
-    return this.request('/manager/flow', { method: 'POST', body: { mode } });
+  async octaviaFlow(mode) {
+    return this.request('/octavia/flow', { method: 'POST', body: { mode } });
   },
 
-  async delegateTask(taskId, targetWorkerId, taskData) {
-    return this.request('/manager/delegate', {
+  async octaviaDelegate(taskId, targetWorkerId, taskData) {
+    return this.request('/octavia/delegate', {
       method: 'POST',
-      body: { taskId, targetWorkerId, taskData },
+      body: { taskId, targetWorkerId, taskData }
     });
   },
 
-  async approveTask(taskId) {
-    return this.request('/manager/approve', { method: 'POST', body: { taskId } });
+  async octaviaApprove(taskId) {
+    return this.request('/octavia/approve', { method: 'POST', body: { taskId } });
   },
 
-  async getManagerInbox(status) {
+  async octaviaInbox(status) {
     const qs = status ? `?status=${status}` : '';
-    return this.request(`/manager/inbox${qs}`);
+    return this.request(`/octavia/inbox${qs}`);
   },
 
-  async getManagerReports(agentId, status) {
+  async octaviaReports(agentId, status) {
     const params = new URLSearchParams();
     if (agentId) params.append('agentId', agentId);
     if (status) params.append('status', status);
     const qs = params.toString() ? `?${params.toString()}` : '';
-    return this.request(`/manager/reports${qs}`);
+    return this.request(`/octavia/reports${qs}`);
   },
 
-  async readInboxMessage(messageId) {
-    return this.request(`/manager/inbox/${messageId}/read`, { method: 'POST' });
+  async octaviaInboxRead(messageId) {
+    return this.request(`/octavia/inbox/${messageId}/read`, { method: 'POST' });
   },
 
-  async readReport(reportId) {
-    return this.request(`/manager/reports/${reportId}/read`, { method: 'POST' });
+  async octaviaReportsRead(reportId) {
+    return this.request(`/octavia/reports/${reportId}/read`, { method: 'POST' });
   },
 };
 
@@ -266,9 +267,9 @@ async function syncData() {
       state.activityLog = activityData.log;
     }
 
-    // Update manager state if present
-    if (statusData.manager) {
-      state.manager = statusData.manager;
+    // Update octavia state if present
+    if (statusData.octavia) {
+      state.octavia = statusData.octavia;
     }
 
     // Build task lists from queues
@@ -278,7 +279,7 @@ async function syncData() {
     state.tasks.failed = [];
 
     Object.entries(statusData.workers || {}).forEach(([id, worker]) => {
-      if (id === 'manager') return; // skip manager
+      if (id === 'octavia') return; // skip octavia (manager)
       if (worker.queueLength > 0 && worker.currentTask) {
         state.tasks.queued.push({
           ...worker.currentTask,
@@ -420,30 +421,30 @@ function updateDashboard() {
   // Update badges
   $('#taskCountBadge').textContent = totalQueued;
 
-  // Update manager badge with pending items
-  const managerPending = (state.manager?.pendingApprovals || 0) + (state.manager?.agentReports || 0) + (state.manager?.directorInbox || 0);
-  $('#managerBadge').textContent = managerPending;
-  $('#managerBadge').style.display = managerPending > 0 ? 'flex' : 'none';
+  // Update octavia badge with pending items
+  const octaviaPending = (state.octavia?.pendingApprovals || 0) + (state.octavia?.agentReports || 0) + (state.octavia?.directorInbox || 0);
+  $('#octaviaBadge').textContent = octaviaPending;
+  $('#octaviaBadge').style.display = octaviaPending > 0 ? 'flex' : 'none';
 }
 
 // ============================================
 // MANAGER VIEW
 // ============================================
 function updateManagerView() {
-  if (!state.manager) return;
+  if (!state.octavia) return;
 
-  const m = state.manager;
+  const m = state.octavia;
 
   // Stats
-  $('#managerMode').textContent = m.mode === 'auto' ? 'Auto' : 'Manual';
-  $('#managerQueueCount').textContent = m.queueLength || 0;
-  $('#managerReportsCount').textContent = m.agentReports || 0;
-  $('#managerInboxCount').textContent = m.directorInbox || 0;
+  $('#octaviaMode').textContent = m.mode === 'auto' ? 'Auto' : 'Manual';
+  $('#octaviaQueueCount').textContent = m.queueLength || 0;
+  $('#octaviaReportsCount').textContent = m.agentReports || 0;
+  $('#octaviaInboxCount').textContent = m.directorInbox || 0;
 
-  // Badges
-  $('#managerQueueBadge').textContent = m.queueLength || 0;
-  $('#managerReportsBadge').textContent = m.agentReports || 0;
-  $('#managerInboxBadge').textContent = m.directorInbox || 0;
+  // Update sub-badges
+  $('#octaviaQueueBadge').textContent = m.queueLength || 0;
+  $('#octaviaReportsBadge').textContent = m.agentReports || 0;
+  $('#octaviaInboxBadge').textContent = m.directorInbox || 0;
 
   // Flow status
   const flowStatus = $('#flowStatus');
@@ -458,25 +459,25 @@ function updateManagerView() {
   }
 
   // Manager Queue
-  const queueList = $('#managerQueueList');
+  const queueList = $('#octaviaQueueList');
   queueList.innerHTML = '';
-  const managerWorker = state.workers?.manager;
+  const managerWorker = state.workers?.octavia;
   if (managerWorker && managerWorker.queueLength > 0) {
     // We don't have the actual queue items from /status, just count
     // For now show a placeholder that updates when we have real data
     const item = document.createElement('div');
     item.className = 'queue-item';
     item.innerHTML = `
-      <div class="queue-item-title">${managerWorker.queueLength} task(s) awaiting Manager</div>
+      <div class="queue-item-title">${managerWorker.queueLength} task(s) awaiting Octavia</div>
       <div class="queue-item-meta">Mode: ${m.mode}</div>
     `;
     queueList.appendChild(item);
   } else {
-    queueList.innerHTML = '<div class="queue-empty">No tasks in manager queue</div>';
+    queueList.innerHTML = '<div class="queue-empty">No tasks in Octavia\'s queue</div>';
   }
 
   // Agent Reports
-  const reportsList = $('#managerReportsList');
+  const reportsList = $('#octaviaReportsList');
   reportsList.innerHTML = '';
   if (m.recentReports && m.recentReports.length > 0) {
     m.recentReports.forEach(report => {
@@ -507,7 +508,7 @@ function updateManagerView() {
       inboxList.appendChild(item);
     });
   } else {
-    inboxList.innerHTML = '<div class="queue-empty">No messages from Manager</div>';
+    inboxList.innerHTML = '<div class="queue-empty">No messages from Octavia</div>';
   }
 }
 
@@ -517,21 +518,21 @@ async function sendDirectorCommand() {
   if (!command) return;
 
   input.value = '';
-  showToast('Sending to Manager...', 'info');
+  showToast('Sending to Octavia...', 'info');
 
   try {
     const result = await api.sendCommand(command);
-    showToast(`Manager: ${result.flow || 'Task received'}`, 'success');
+    showToast(`Octavia: ${result.flow || 'Task received'}`, 'success');
     syncData();
   } catch (err) {
     showToast(err.message, 'error');
   }
 }
 
-async function setManagerFlow(mode) {
+async function setOctaviaFlow(mode) {
   try {
-    await api.setManagerFlow(mode);
-    showToast(`Manager flow set to ${mode}`, 'success');
+    await api.octaviaFlow(mode);
+    showToast(`Octavia flow set to ${mode}`, 'success');
     syncData();
   } catch (err) {
     showToast(err.message, 'error');
@@ -814,8 +815,8 @@ function initEventListeners() {
   });
 
   // Flow control buttons
-  $('#flowAuto').addEventListener('click', () => setManagerFlow('auto'));
-  $('#flowManual').addEventListener('click', () => setManagerFlow('manual'));
+  $('#flowAuto').addEventListener('click', () => setOctaviaFlow('auto'));
+  $('#flowManual').addEventListener('click', () => setOctaviaFlow('manual'));
 
   // Command hints
   $$('.hint').forEach(hint => {

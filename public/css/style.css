@@ -1730,14 +1730,14 @@ body {
    MANAGER VIEW STYLES
    ============================================ */
 
-.manager-stats {
+.octavia-stats {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 16px;
   margin-bottom: 28px;
 }
 
-.manager-grid {
+.octavia-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 20px;
@@ -1843,21 +1843,46 @@ body {
   border: 1px solid var(--border);
 }
 
-.manager-queue-list,
-.manager-reports-list,
+.octavia-queue-list,
+.octavia-reports-list,
 .director-inbox-list {
   padding: 12px;
   max-height: 300px;
   overflow-y: auto;
 }
 
-.nav-badge.manager-badge {
+.octavia-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.octavia-avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  object-fit: cover;
+}
+
+.octavia-header-text h1 {
+  margin: 0;
+}
+
+@media (max-width: 480px) {
+  .octavia-avatar {
+    width: 48px;
+    height: 48px;
+  }
+}
+
+.nav-badge.octavia-badge {
   background: var(--warning-soft);
   color: var(--warning);
 }
 
 @media (max-width: 1200px) {
-  .manager-grid {
+  .octavia-grid {
     grid-template-columns: 1fr;
   }
   .director-panel {
@@ -1866,13 +1891,13 @@ body {
 }
 
 @media (max-width: 900px) {
-  .manager-stats {
+  .octavia-stats {
     grid-template-columns: repeat(2, 1fr);
   }
 }
 
 @media (max-width: 480px) {
-  .manager-stats {
+  .octavia-stats {
     grid-template-columns: 1fr;
   }
   .flow-mode-selector {

@@ -28,15 +28,17 @@ app.use(express.static('public'));
 // ============================================
 
 const WORKERS = {
-  manager: {
-    name: 'Manager Agent',
+  octavia: {
+    name: 'Octavia Hermes',
     type: 'director-facing',
     transport: 'internal',
     role: 'orchestrator',
     host: null,
     baseUrl: null,
-    capabilities: ['task-orchestration', 'flow-control', 'agent-delegation', 'status-synthesis', 'director-reports'],
-    description: 'The only agent that speaks with the Director. Controls task flow between all agents.'
+    telegram: '@OctaviaHermesBot',
+    capabilities: ['task-orchestration', 'flow-control', 'agent-delegation', 'status-synthesis', 'director-reports', 'writing', 'research', 'admin'],
+    description: 'The Manager. The only agent that speaks with the Director (Jesse). Controls task flow between all agents. Writer/Admin/Researcher.',
+    isManager: true
   },
   miah: {
     name: 'Miah Hermes',
@@ -47,7 +49,7 @@ const WORKERS = {
     privateKey: process.env.MIAH_KEY_PATH || '/home/manager/.ssh/miah_key',
     baseUrl: null,
     capabilities: ['write-code', 'deploy', 'debug', 'code-review', 'automation'],
-    reportsTo: 'manager'
+    reportsTo: 'octavia'
   },
   markus: {
     name: 'Markus Bot',
@@ -56,7 +58,7 @@ const WORKERS = {
     host: null,
     baseUrl: process.env.MARKUS_API || 'http://localhost:3001',
     capabilities: ['post-x', 'curate-content', 'engagement', 'analytics', 'schedule'],
-    reportsTo: 'manager'
+    reportsTo: 'octavia'
   },
   alexbet: {
     name: 'Alexbet Sharp V2',
@@ -65,7 +67,7 @@ const WORKERS = {
     baseUrl: process.env.ALEXBET_API || 'https://alexbet-sharp.railway.app',
     apiKey: process.env.ALEXBET_KEY,
     capabilities: ['scan-markets', 'kelly-sizing', 'edge-detection', 'alerts', 'pnl-tracking'],
-    reportsTo: 'manager'
+    reportsTo: 'octavia'
   }
 };
 
@@ -76,7 +78,7 @@ const WORKERS = {
 class TaskQueue {
   constructor() {
     this.queues = {
-      manager: [],
+      octavia: [],
       miah: [],
       markus: [],
       alexbet: []
@@ -103,13 +105,13 @@ class TaskQueue {
       completedAt: null,
       source: options.source || 'director',
       approvedByManager: options.source === 'director' ? false : true,
-      requiresApproval: WORKERS[workerId]?.reportsTo === 'manager' && options.source === 'agent'
+      requiresApproval: WORKERS[workerId]?.reportsTo === 'octavia' && options.source === 'agent'
     };
     
     // If task is from an agent to manager, route to manager queue
-    if (workerId === 'manager' || options.source === 'agent') {
-      this.queues.manager.push(fullTask);
-      this.logActivity(`Agent task submitted to Manager: ${task.description}`);
+    if (workerId === 'octavia' || options.source === 'agent') {
+      this.queues.octavia.push(fullTask);
+      this.logActivity(`Agent task submitted to Octavia (Manager): ${task.description}`);
     } else {
       this.queues[workerId].push(fullTask);
       this.logActivity(`Task queued for ${WORKERS[workerId].name}: ${task.description}`);
@@ -120,7 +122,7 @@ class TaskQueue {
 
   // Manager delegates task to a worker
   delegateTask(managerTaskId, targetWorkerId, taskData) {
-    const managerQueue = this.queues.manager;
+    const managerQueue = this.queues.octavia;
     const taskIndex = managerQueue.findIndex(t => t.id === managerTaskId);
     
     if (taskIndex === -1) return null;
@@ -135,7 +137,7 @@ class TaskQueue {
       type: taskData.type || managerTask.type || 'custom',
       parentTaskId: managerTaskId,
       managerDirective: taskData.directive || null
-    }, { source: 'manager' });
+    }, { source: 'octavia' });
     
     this.logActivity(`Manager delegated task to ${WORKERS[targetWorkerId]?.name || targetWorkerId}: ${delegatedTask.description}`);
     return delegatedTask;
@@ -143,7 +145,7 @@ class TaskQueue {
 
   // Manager approves a task from the director
   approveTask(taskId) {
-    const queue = this.queues.manager;
+    const queue = this.queues.octavia;
     const task = queue.find(t => t.id === taskId);
     if (!task) return null;
     
@@ -176,7 +178,7 @@ class TaskQueue {
   directorMessage(message) {
     const msg = {
       id: uuidv4(),
-      from: 'manager',
+      from: 'octavia',
       message,
       timestamp: new Date(),
       status: 'unread'
@@ -212,7 +214,7 @@ class TaskQueue {
     this.logActivity(`✓ Completed: ${task.description}`);
     
     // If completed by a worker reporting to manager, notify manager
-    if (WORKERS[workerId]?.reportsTo === 'manager' && task.parentTaskId) {
+    if (WORKERS[workerId]?.reportsTo === 'octavia' && task.parentTaskId) {
       this.agentReport(workerId, {
         type: 'task-complete',
         parentTaskId: task.parentTaskId,
@@ -239,7 +241,7 @@ class TaskQueue {
     this.logActivity(`✗ Failed: ${task.description} - ${error}`);
     
     // If failed by a worker reporting to manager, notify manager
-    if (WORKERS[workerId]?.reportsTo === 'manager' && task.parentTaskId) {
+    if (WORKERS[workerId]?.reportsTo === 'octavia' && task.parentTaskId) {
       this.agentReport(workerId, {
         type: 'task-failed',
         parentTaskId: task.parentTaskId,
@@ -268,8 +270,8 @@ class TaskQueue {
   getManagerStatus() {
     return {
       mode: this.managerFlowControl.mode,
-      queueLength: this.queues.manager.length,
-      pendingApprovals: this.queues.manager.filter(t => !t.approvedByManager && t.source === 'director').length,
+      queueLength: this.queues.octavia.length,
+      pendingApprovals: this.queues.octavia.filter(t => !t.approvedByManager && t.source === 'director').length,
       agentReports: this.managerFlowControl.agentReports.filter(r => r.status === 'unread').length,
       directorInbox: this.managerFlowControl.directorInbox.filter(m => m.status === 'unread').length,
       recentReports: this.managerFlowControl.agentReports.slice(-10).reverse(),
@@ -304,18 +306,18 @@ class CommandParser {
       return { type: 'resume-all' };
     }
 
-    // Director speaking directly to Manager
-    const managerMatch = trimmed.match(/^@manager\s+(.+)$/i);
+    // Director speaking directly to Octavia (Manager)
+    const managerMatch = trimmed.match(/^@octavia\s+(.+)$/i);
     if (managerMatch) {
       return {
         type: 'manager-directive',
-        workerId: 'manager',
+        workerId: 'octavia',
         description: managerMatch[1]
       };
     }
 
-    // Agent submitting task to Manager
-    const agentToManagerMatch = trimmed.match(/^@manager\s+from\s+@(miah|markus|alexbet)\s*:\s*(.+)$/i);
+    // Agent submitting task to Octavia (Manager)
+    const agentToManagerMatch = trimmed.match(/^@octavia\s+from\s+@(miah|markus|alexbet)\s*:\s*(.+)$/i);
     if (agentToManagerMatch) {
       return {
         type: 'agent-to-manager',
@@ -324,7 +326,7 @@ class CommandParser {
       };
     }
 
-    const mentionMatch = trimmed.match(/^@(miah|markus|alexbet|manager)\s+(.+)$/i);
+    const mentionMatch = trimmed.match(/^@(miah|markus|alexbet|octavia)\s+(.+)$/i);
     if (mentionMatch) {
       const [_, workerId, taskDesc] = mentionMatch;
       return {
@@ -339,7 +341,7 @@ class CommandParser {
 
   static getTaskTemplate(workerId, description) {
     const templates = {
-      manager: {
+      octavia: {
         'delegate': { description: `Delegate: ${description}`, type: 'delegate' },
         'report': { description: `Report: ${description}`, type: 'director-report' },
         'approve': { description: `Approve: ${description}`, type: 'approve' },
@@ -477,7 +479,7 @@ app.post('/command', async (req, res) => {
       return res.json({
         type: 'status-report',
         queues: {
-          manager: taskQueue.getQueue('manager'),
+          octavia: taskQueue.getQueue('octavia'),
           miah: taskQueue.getQueue('miah'),
           markus: taskQueue.getQueue('markus'),
           alexbet: taskQueue.getQueue('alexbet')
@@ -494,8 +496,8 @@ app.post('/command', async (req, res) => {
 
     // Director speaking to Manager
     if (parsed.type === 'manager-directive') {
-      const taskTemplate = CommandParser.getTaskTemplate('manager', parsed.description);
-      const task = taskQueue.enqueueTask('manager', taskTemplate, { source: 'director' });
+      const taskTemplate = CommandParser.getTaskTemplate('octavia', parsed.description);
+      const task = taskQueue.enqueueTask('octavia', taskTemplate, { source: 'director' });
       
       // In auto mode, manager auto-approves and delegates
       if (taskQueue.managerFlowControl.mode === 'auto') {
@@ -545,7 +547,7 @@ app.post('/command', async (req, res) => {
     if (parsed.type === 'agent-to-manager') {
       const { agentId, description } = parsed;
       
-      const task = taskQueue.enqueueTask('manager', {
+      const task = taskQueue.enqueueTask('octavia', {
         description: `From ${WORKERS[agentId]?.name || agentId}: ${description}`,
         type: 'agent-request',
         requestingAgent: agentId
@@ -735,10 +737,10 @@ app.get('/health', (req, res) => {
 // ============================================
 
 // Get manager status and flow control state
-app.get('/manager/status', (req, res) => {
+app.get('/octavia/status', (req, res) => {
   res.json({
     status: 'success',
-    manager: taskQueue.getManagerStatus(),
+    octavia: taskQueue.getManagerStatus(),
     workers: Object.entries(WORKERS).reduce((acc, [id, w]) => {
       acc[id] = {
         name: w.name,
@@ -756,7 +758,7 @@ app.get('/manager/status', (req, res) => {
 });
 
 // Set manager flow control mode (auto / manual)
-app.post('/manager/flow', (req, res) => {
+app.post('/octavia/flow', (req, res) => {
   const { mode } = req.body;
   if (!mode || !['auto', 'manual'].includes(mode)) {
     return res.status(400).json({ error: 'Mode must be "auto" or "manual"' });
@@ -766,7 +768,7 @@ app.post('/manager/flow', (req, res) => {
 });
 
 // Manager delegates a task to a worker
-app.post('/manager/delegate', async (req, res) => {
+app.post('/octavia/delegate', async (req, res) => {
   const { taskId, targetWorkerId, taskData } = req.body;
 
   if (!taskId || !targetWorkerId || !WORKERS[targetWorkerId]) {
@@ -800,7 +802,7 @@ app.post('/manager/delegate', async (req, res) => {
 });
 
 // Manager approves a task
-app.post('/manager/approve', (req, res) => {
+app.post('/octavia/approve', (req, res) => {
   const { taskId } = req.body;
   if (!taskId) {
     return res.status(400).json({ error: 'taskId required' });
@@ -815,7 +817,7 @@ app.post('/manager/approve', (req, res) => {
 });
 
 // Agent submits report to manager
-app.post('/manager/report', (req, res) => {
+app.post('/octavia/report', (req, res) => {
   const { agentId, type, summary, result, error } = req.body;
 
   if (!agentId || !WORKERS[agentId]) {
@@ -833,7 +835,7 @@ app.post('/manager/report', (req, res) => {
 });
 
 // Manager sends message to Director
-app.post('/manager/message', (req, res) => {
+app.post('/octavia/message', (req, res) => {
   const { message } = req.body;
   if (!message) {
     return res.status(400).json({ error: 'Message required' });
@@ -844,7 +846,7 @@ app.post('/manager/message', (req, res) => {
 });
 
 // Director reads manager messages
-app.get('/manager/inbox', (req, res) => {
+app.get('/octavia/inbox', (req, res) => {
   const { status } = req.query;
   let messages = taskQueue.managerFlowControl.directorInbox;
   if (status) {
@@ -858,7 +860,7 @@ app.get('/manager/inbox', (req, res) => {
 });
 
 // Mark director inbox message as read
-app.post('/manager/inbox/:messageId/read', (req, res) => {
+app.post('/octavia/inbox/:messageId/read', (req, res) => {
   const { messageId } = req.params;
   const msg = taskQueue.managerFlowControl.directorInbox.find(m => m.id === messageId);
   if (!msg) {
@@ -869,7 +871,7 @@ app.post('/manager/inbox/:messageId/read', (req, res) => {
 });
 
 // Get agent reports for manager
-app.get('/manager/reports', (req, res) => {
+app.get('/octavia/reports', (req, res) => {
   const { agentId, status } = req.query;
   let reports = taskQueue.managerFlowControl.agentReports;
   if (agentId) {
@@ -886,7 +888,7 @@ app.get('/manager/reports', (req, res) => {
 });
 
 // Mark agent report as read
-app.post('/manager/reports/:reportId/read', (req, res) => {
+app.post('/octavia/reports/:reportId/read', (req, res) => {
   const { reportId } = req.params;
   const report = taskQueue.managerFlowControl.agentReports.find(r => r.id === reportId);
   if (!report) {
