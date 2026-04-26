@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * OCTAVIA DAEMON
+ * OCTAVIA DAEMON — LLM-ENHANCED
  * Hermes Agent Management Hub - Autonomous Manager Agent
  * Oddsify Labs
  *
@@ -11,6 +11,11 @@
  * - Run scheduled health checks and reports
  * - Handle nightly debrief process
  * - Escalate blockers to Director inbox
+ *
+ * LLM Integration (optional):
+ * - Rich status reports with insights and recommendations
+ * - Smart task analysis for delegation decisions
+ * - Professional director communications
  *
  * No Telegram. No external messaging. Pure API.
  */
@@ -26,6 +31,12 @@ const POLL_INTERVAL_MS = parseInt(process.env.POLL_INTERVAL_MS, 10) || 5000;
 const HEALTH_CHECK_INTERVAL_MS = parseInt(process.env.HEALTH_CHECK_INTERVAL_MS, 10) || 60000;
 const AUTO_REPORT_INTERVAL_MS = parseInt(process.env.AUTO_REPORT_INTERVAL_MS, 10) || 3600000;
 
+// Optional LLM for enhanced reports
+const LLM_API_KEY = process.env.LLM_API_KEY;
+const LLM_BASE_URL = process.env.LLM_BASE_URL || 'https://api.openai.com/v1';
+const LLM_MODEL = process.env.LLM_MODEL || 'gpt-4o-mini';
+const LLM_TIMEOUT = parseInt(process.env.LLM_TIMEOUT_MS, 10) || 30000;
+
 if (!API_KEY) {
   console.error('[Octavia] FATAL: API_KEY environment variable required');
   process.exit(1);
@@ -40,13 +51,52 @@ const api = axios.create({
   timeout: 15000,
 });
 
+const llm = LLM_API_KEY ? axios.create({
+  baseURL: LLM_BASE_URL,
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${LLM_API_KEY}`,
+  },
+  timeout: LLM_TIMEOUT,
+}) : null;
+
 // ============================================
 // LOGGING
 // ============================================
 function log(level, message) {
   const ts = new Date().toISOString();
-  const icon = { info: '👤', task: '📋', delegate: '→', report: '📊', warn: '⚠️', error: '❌' }[level] || '•';
+  const icon = { info: '👔', task: '📋', delegate: '→', report: '📊', warn: '⚠️', error: '❌', llm: '🤖' }[level] || '•';
   console.log(`[${ts}] ${icon} [Octavia] ${message}`);
+}
+
+// ============================================
+// LLM CLIENT (Optional)
+// ============================================
+
+async function callLLM(systemPrompt, userPrompt, options = {}) {
+  if (!llm) return null;
+  const maxTokens = options.maxTokens || 1500;
+  const temperature = options.temperature ?? 0.5;
+
+  try {
+    const { data } = await llm.post('/chat/completions', {
+      model: LLM_MODEL,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      max_tokens: maxTokens,
+      temperature,
+    });
+
+    const content = data.choices?.[0]?.message?.content?.trim() || '';
+    const tokens = data.usage?.total_tokens || 0;
+    return { content, tokens, success: true };
+  } catch (error) {
+    const msg = error.response?.data?.error?.message || error.message;
+    log('warn', `LLM call failed: ${msg}`);
+    return null;
+  }
 }
 
 // ============================================
@@ -151,6 +201,43 @@ async function generateStatusReport() {
     const disabled = workers.filter(([, w]) => w.status === 'disabled').length;
     const totalQueued = workers.reduce((sum, [, w]) => sum + w.queueLength, 0);
 
+    // Build raw data for LLM
+    const workerDetails = workers.map(([id, w]) => ({
+      id,
+      name: w.name,
+      status: w.status,
+      riskTier: w.riskTier || '-',
+      queueLength: w.queueLength || 0,
+      healthScore: w.health?.score || 100,
+      healthStatus: w.health?.status || 'healthy',
+      circuitBreaker: w.circuitBreaker?.state || 'CLOSED',
+      errorCount: w.health?.errorCount || 0,
+    }));
+
+    // Try LLM-enhanced report first
+    if (llm) {
+      const systemPrompt = `You are Octavia Hermes, the fleet manager at Oddsify Labs. You write concise, actionable status reports for the Director (Jesse Collins). Use bullet points, emojis, and clear section headers. Highlight risks, blockers, and recommended actions.`;
+
+      const userPrompt = `Generate a fleet status report based on this data:
+
+Summary: ${active} active, ${disabled} disabled, ${totalQueued} queued tasks.
+
+Worker details:
+${JSON.stringify(workerDetails, null, 2)}
+
+Write a professional status report. Include:
+1. Fleet health summary
+2. Per-worker status with health scores and circuit breaker states
+3. Any workers needing attention
+4. Recommended actions`;
+
+      const llmResult = await callLLM(systemPrompt, userPrompt, { temperature: 0.4, maxTokens: 1500 });
+      if (llmResult?.content) {
+        return `📊 *Fleet Status Report* (LLM-enhanced)\n\n${llmResult.content}`;
+      }
+    }
+
+    // Fallback to template report
     let report = `📊 *Fleet Status Report*\n\n`;
     report += `Active: ${active} | Disabled: ${disabled} | Queued: ${totalQueued}\n\n`;
 
@@ -177,7 +264,7 @@ async function healthCheck() {
   try {
     const { data } = await api.get('/health');
     log('info', `HAMH health check: ${data.status} (uptime: ${Math.floor(data.uptime)}s)`);
-    
+
     // Also check fleet health and alert on circuit breakers
     const { data: fleet } = await api.get('/fleet/health');
     for (const [wid, info] of Object.entries(fleet.workers)) {
@@ -244,12 +331,13 @@ function startScheduledJobs() {
 // ============================================
 
 async function main() {
+  const llmStatus = llm ? `LLM: ${LLM_MODEL}` : 'LLM: disabled (template mode)';
   console.log(`
-╔════════════════════════════════════════════════╗
-║  OCTAVIA DAEMON                            ║
-║  Hermes Agent Management Hub               ║
-║  Oddsify Labs                              ║
-╚════════════════════════════════════════════════╝
+╔═══════════════════════════════════════════════════════════════════════════════════════════╗
+║  OCTAVIA DAEMON — LLM-Enhanced                                               ║
+║  Hermes Agent Management Hub — Oddsify Labs                                  ║
+║  ${llmStatus.padEnd(76)}║
+╚═══════════════════════════════════════════════════════════════════════════════════════════╝
   `);
 
   log('info', `Connecting to HAMH at ${HAMH_BASE_URL}`);

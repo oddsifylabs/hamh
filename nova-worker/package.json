@@ -1,0 +1,19 @@
+{
+  "name": "@oddsifylabs/nova-worker",
+  "version": "1.0.0",
+  "description": "Nova Hermes - Writer / Admin / Researcher worker for HAMH",
+  "main": "nova-worker.js",
+  "scripts": {
+    "start": "node nova-worker.js",
+    "dev": "node nova-worker.js"
+  },
+  "keywords": ["nova", "hamh", "oddsifylabs", "writer", "researcher", "admin"],
+  "author": "Oddsify Labs",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.7.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

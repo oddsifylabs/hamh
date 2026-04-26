@@ -1,0 +1,16 @@
+[Unit]
+Description=Nova Hermes Worker (Writer/Admin/Researcher)
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/nova-worker
+ExecStart=/usr/bin/node nova-worker.js
+Restart=always
+RestartSec=10
+Environment=HAMH_BASE_URL=https://hamh.oddsifylabs.com
+Environment=API_KEY=your_api_key_here
+
+[Install]
+WantedBy=multi-user.target
